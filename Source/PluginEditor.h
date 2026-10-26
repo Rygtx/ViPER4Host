@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "Theme.h"
 
 #include <JuceHeader.h>
 #include <vector>
@@ -38,6 +39,13 @@ private:
         juce::Label fileStatus;
         juce::String fileKind; // APVTS state property holding the path
         bool hasFileRow = false;
+        // First "*Enable" param of the group, if any: dims and disables the
+        // other rows while the effect is off (the enable control itself stays
+        // interactive).
+        juce::String enableParamId;
+        std::unique_ptr<juce::ParameterAttachment> enableAttachment;
+
+        void setControlsEnabled(bool enabled);
     };
 
     void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
@@ -49,6 +57,7 @@ private:
     void refreshFileStatus(ParamGroup& group);
 
     ViPER4HostAudioProcessor& processor_;
+    v4h::ViperLookAndFeel lookAndFeel_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
     juce::Label titleLabel_;
     juce::Label languageLabel_;

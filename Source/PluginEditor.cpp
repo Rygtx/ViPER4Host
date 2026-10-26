@@ -5,10 +5,10 @@ namespace
 {
 constexpr int defaultWidth = 660;
 constexpr int defaultHeight = 600;
-constexpr int headerHeight = 28;
+constexpr int headerHeight = 40;
 constexpr int gap = 8;
 constexpr int rowHeight = 30;
-constexpr int titleHeight = 20;
+constexpr int titleHeight = 24;
 constexpr int labelWidth = 130;
 
 // Band params (mbc3Threshold, de7Freq) share one label key per role across
@@ -33,6 +33,8 @@ juce::String labelKey(const juce::String& paramId)
 ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioProcessor& processor)
     : AudioProcessorEditor(&processor), processor_(processor)
 {
+    setLookAndFeel(&lookAndFeel_);
+
     // Sections in the same order as the parameter layout.
     addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
     addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
@@ -117,7 +119,10 @@ void ViPER4HostAudioProcessorEditor::selectLanguage()
     relabelAll(code);
 }
 
-ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor() = default;
+ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor()
+{
+    setLookAndFeel(nullptr);
+}
 
 void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::vector<juce::String> paramIds)
 {
@@ -149,7 +154,7 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
         else
         {
             row->slider.setSliderStyle(juce::Slider::LinearHorizontal);
-            row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, rowHeight);
+            row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, 22);
             row->label.setJustificationType(juce::Justification::centredRight);
             row->sliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, id, row->slider);
             content_.addAndMakeVisible(row->slider);
@@ -157,6 +162,19 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
 
         content_.addAndMakeVisible(row->label);
         pg->rows.push_back(std::move(row));
+    }
+
+    // Wire the group's enable switch (if it has one) to dim/disable the rest.
+    const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
+        [](const juce::String& id) { return id.endsWith("Enable"); });
+    if (enableIt != paramIds.end())
+    {
+        pg->enableParamId = *enableIt;
+        pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
+            *apvts.getParameter(pg->enableParamId),
+            [raw = pg.get()](float value) { raw->setControlsEnabled(value > 0.5f); },
+            nullptr);
+        pg->enableAttachment->sendInitialUpdate();
     }
 
     if (groupId == "groupConv" || groupId == "groupDdc")
@@ -170,7 +188,26 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
     }
 
     content_.addAndMakeVisible(pg->group);
+    pg->group.toBack();
     groups_.push_back(std::move(pg));
+}
+
+void ViPER4HostAudioProcessorEditor::ParamGroup::setControlsEnabled(bool enabled)
+{
+    const float alpha = enabled ? 1.0f : 0.35f;
+    for (auto& row : rows)
+    {
+        if (row->paramId == enableParamId)
+            continue;
+        row->label.setEnabled(enabled);
+        row->label.setAlpha(alpha);
+        row->slider.setEnabled(enabled);
+        row->slider.setAlpha(alpha);
+        row->combo.setEnabled(enabled);
+        row->combo.setAlpha(alpha);
+        row->toggle.setEnabled(enabled);
+        row->toggle.setAlpha(alpha);
+    }
 }
 
 void ViPER4HostAudioProcessorEditor::fillCombo(
@@ -255,7 +292,7 @@ void ViPER4HostAudioProcessorEditor::resized()
 
     auto langArea = headerArea.removeFromRight(90 + gap + 120);
     languageLabel_.setBounds(langArea.removeFromLeft(90));
-    languageBox_.setBounds(langArea.withSizeKeepingCentre(120, 24));
+    languageBox_.setBounds(langArea.withSizeKeepingCentre(120, 26));
 
     viewport_.setBounds(getLocalBounds().removeFromBottom(getHeight() - headerHeight).reduced(gap));
 
@@ -280,7 +317,7 @@ void ViPER4HostAudioProcessorEditor::resized()
             auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
             row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
             if (row->buttonAttachment != nullptr)
-                row->toggle.setBounds(rowBounds.removeFromLeft(labelWidth));
+                row->toggle.setBounds(rowBounds.removeFromRight(44).withSizeKeepingCentre(40, 20));
             else if (row->comboAttachment != nullptr)
                 row->combo.setBounds(rowBounds.removeFromLeft(120));
             else
@@ -305,5 +342,12 @@ void ViPER4HostAudioProcessorEditor::resized()
 
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
+    using namespace v4h::theme;
+    g.fillAll(c(background));
+
+    auto strip = getLocalBounds().removeFromTop(headerHeight).toFloat();
+    g.setColour(c(header));
+    g.fillRect(strip);
+    g.setColour(c(accent));
+    g.fillRect(strip.removeFromBottom(2.0f));
 }
