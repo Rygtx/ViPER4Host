@@ -34,12 +34,16 @@ private:
 
     void addGroup(const juce::String& groupId, std::initializer_list<const char*> paramIds);
     void relabelAll(const juce::String& languageCode);
+    void selectLanguage(int index);
 
     ViPER4HostAudioProcessor& processor_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
     juce::Label titleLabel_;
     juce::Label languageLabel_;
-    juce::ComboBox languageBox_;
+    // ponytail: EQ APO deletes the plugin on a non-message thread; tearing down
+    // a ComboBox's juce::PopupMenu there races the message thread and crashes in
+    // DropShadower, so language choice uses plain toggles — no popup windows.
+    std::vector<std::unique_ptr<juce::ToggleButton>> languageButtons_;
     juce::Viewport viewport_;
     juce::Component content_;
 

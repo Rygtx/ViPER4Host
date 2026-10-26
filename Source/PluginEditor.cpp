@@ -31,33 +31,46 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     titleLabel_.setJustificationType(juce::Justification::centredLeft);
     languageLabel_.setJustificationType(juce::Justification::centredRight);
     for (const auto& option : v4h::localisation::availableLanguages())
-        languageBox_.addItem(option.displayName, languageBox_.getNumItems() + 1);
-    languageBox_.onChange = [this] {
-        const auto language = v4h::localisation::normaliseLanguageCode(
-            languageBox_.getText().trim());
-        processor_.setUiLanguage(language);
-        relabelAll(language);
-    };
+    {
+        auto button = std::make_unique<juce::ToggleButton>(option.displayName);
+        button->setClickingTogglesState(true);
+        button->onClick = [this, index = static_cast<int>(languageButtons_.size())] {
+            selectLanguage(index);
+        };
+        languageButtons_.push_back(std::move(button));
+    }
 
     content_.setSize(defaultWidth, 0);
     viewport_.setViewedComponent(&content_, false);
     viewport_.setScrollBarsShown(true, false);
     addAndMakeVisible(titleLabel_);
     addAndMakeVisible(languageLabel_);
-    addAndMakeVisible(languageBox_);
+    for (auto& button : languageButtons_)
+        addAndMakeVisible(*button);
     addAndMakeVisible(viewport_);
     setResizable(true, false);
     setResizeLimits(320, 240, 1920, 2160);
     setSize(defaultWidth, defaultHeight);
 
-    languageBox_.setSelectedId([&] {
-        const auto language = processor_.getUiLanguage();
-        for (int i = 0; i < static_cast<int>(v4h::localisation::availableLanguages().size()); ++i)
-            if (v4h::localisation::availableLanguages()[i].code == language)
-                return i + 1;
-        return 1;
-    }(), juce::dontSendNotification);
-    relabelAll(processor_.getUiLanguage());
+    const auto language = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    for (int i = 0; i < static_cast<int>(languageButtons_.size()); ++i)
+        languageButtons_[static_cast<size_t>(i)]->setToggleState(
+            v4h::localisation::availableLanguages()[static_cast<size_t>(i)].code == language,
+            juce::dontSendNotification);
+    relabelAll(language);
+}
+
+void ViPER4HostAudioProcessorEditor::selectLanguage(int index)
+{
+    const auto& languages = v4h::localisation::availableLanguages();
+    const auto& code = languages[static_cast<size_t>(juce::jlimit(
+        0, static_cast<int>(languages.size()) - 1, index))].code;
+    for (int i = 0; i < static_cast<int>(languageButtons_.size()); ++i)
+        languageButtons_[static_cast<size_t>(i)]->setToggleState(
+            v4h::localisation::availableLanguages()[static_cast<size_t>(i)].code == code,
+            juce::dontSendNotification);
+    processor_.setUiLanguage(code);
+    relabelAll(code);
 }
 
 ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor() = default;
@@ -132,8 +145,10 @@ void ViPER4HostAudioProcessorEditor::resized()
 {
     auto headerArea = getLocalBounds().removeFromTop(headerHeight).reduced(gap, 0);
     titleLabel_.setBounds(headerArea.removeFromLeft(getWidth() / 2));
-    languageLabel_.setBounds(headerArea.removeFromRight(220).removeFromLeft(120));
-    languageBox_.setBounds(headerArea.removeFromRight(96).withSizeKeepingCentre(96, 24));
+    languageLabel_.setBounds(headerArea.removeFromRight(90));
+
+    for (auto& button : languageButtons_)
+        button->setBounds(headerArea.removeFromRight(84).withSizeKeepingCentre(80, 24));
 
     viewport_.setBounds(getLocalBounds().removeFromBottom(getHeight() - headerHeight).reduced(gap));
 
