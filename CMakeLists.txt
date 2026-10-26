@@ -52,7 +52,7 @@ juce_add_plugin(ViPER4Host
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE
   PLUGIN_MANUFACTURER_CODE Vp4h
   PLUGIN_CODE Vp4H
-  FORMATS VST VST3
+  FORMATS VST VST3 Standalone # Standalone exe doubles as a UI preview harness
   PRODUCT_NAME "ViPER4Host"
   VST2_CATEGORY kPlugCategEffect
   VST3_CATEGORIES Fx
