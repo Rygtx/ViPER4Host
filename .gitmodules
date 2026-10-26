@@ -1,3 +1,9 @@
 [submodule "ViPERDSP"]
 	path = ViPERDSP
 	url = https://github.com/likelikeslike/ViPERDSP.git
+[submodule "extern/FST"]
+	path = extern/FST
+	url = https://git.iem.at/zmoelnig/FST.git
+[submodule "extern/JUCE"]
+	path = extern/JUCE
+	url = https://github.com/juce-framework/JUCE.git
