@@ -1,16 +1,11 @@
-// NOTE: ViPERDSP headers (viper/ViPER.h) must never land in a JUCE
-// translation unit — their global IIRFilter class is ambiguous with
-// juce::IIRFilter. ViperEngine.h keeps them walled off in its own TU.
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "ViperEngine.h"
 
 ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     : AudioProcessor(BusesProperties()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
                          .withInput("Input", juce::AudioChannelSet::stereo(), true))
     , parameters_(*this, nullptr, "PARAMS", createParameterLayout())
-    , engine_(std::make_unique<ViperEngine>())
 {
 }
 
@@ -97,7 +92,8 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
 void ViPER4HostAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    engine_->prepare(sampleRate, samplesPerBlock);
+    engine_.SetSamplingRate(static_cast<uint32_t>(sampleRate + 0.5));
+    engine_.RequestBuffersReset();
     interleaved_.resize(static_cast<size_t>(samplesPerBlock) * 2);
 }
 
@@ -136,8 +132,31 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     {
         viper::ViPERParams params{};
         buildEngineParams(params);
-        engine_->applyParams(params);
-        engine_->process(interleaved_, numFrames);
+        auto exposedChanged = [](const viper::ViPERParams& a, const viper::ViPERParams& b) {
+            return !(a.master_limiter == b.master_limiter
+                && a.playback_gain_control == b.playback_gain_control
+                && a.lufs == b.lufs
+                && a.bass == b.bass
+                && a.bass_mono == b.bass_mono
+                && a.spectrum_extension == b.spectrum_extension
+                && a.field_surround == b.field_surround
+                && a.stereo_imager == b.stereo_imager
+                && a.headphone_surround == b.headphone_surround
+                && a.reverb == b.reverb
+                && a.clarity == b.clarity
+                && a.cure == b.cure
+                && a.tube_simulator == b.tube_simulator);
+        };
+        if (exposedChanged(params, lastAppliedParams_))
+        {
+            engine_.ApplyParams(params);
+            lastAppliedParams_ = params;
+        }
+
+        // ponytail: ViPERDSP applies internal delay for convolver/VHE but
+        // exposes no latency getter; we report zero latency. Revisit if the
+        // engine grows a GetLatency API.
+        engine_.Process(interleaved_, static_cast<uint32_t>(numFrames));
     }
 
     float* outLeft = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;

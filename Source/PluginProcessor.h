@@ -1,11 +1,8 @@
 #pragma once
 
-#include <ViPERParams.h>
+#include <viper/ViPER.h>
 
 #include <JuceHeader.h>
-#include <memory>
-
-class ViperEngine; // JUCE-free, see ViperEngine.h
 
 class ViPER4HostAudioProcessor final : public juce::AudioProcessor
 {
@@ -45,7 +42,8 @@ private:
     void buildEngineParams(viper::ViPERParams& params) const;
 
     juce::AudioProcessorValueTreeState parameters_;
-    std::unique_ptr<ViperEngine> engine_;
+    ViPER engine_;
+    viper::ViPERParams lastAppliedParams_{};
     std::vector<float> interleaved_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ViPER4HostAudioProcessor)

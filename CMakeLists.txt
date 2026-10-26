@@ -62,8 +62,6 @@ juce_generate_juce_header(ViPER4Host)
 
 target_sources(ViPER4Host
   PRIVATE
-    Source/ViperEngine.cpp
-    Source/ViperEngine.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/PluginProcessor.cpp
@@ -81,6 +79,9 @@ target_compile_definitions(ViPER4Host
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_REPORT_APP_USAGE=0
+    # JuceHeader.h would do `using namespace juce;`, which puts juce::IIRFilter
+    # into unqualified lookup and collides with ViPERDSP's global IIRFilter.
+    DONT_SET_USING_JUCE_NAMESPACE=1
 )
 
 target_compile_options(ViPER4Host
