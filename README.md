@@ -29,6 +29,8 @@ Outputs land in `build/ViPER4Host_artefacts/Release/` (VST2 `dll`, VST3 `vst3`).
 
 ## Notes
 
+- UI localisation: English / 简体中文 / 繁體中文, switchable in the editor and
+  saved per instance with the host session. Terms follow ViPER4Windows.
 - ViPERDSP is reverse-engineered from ViPER4Android and is personal-use only;
   see its README for the legal notice.
 - The engine is 2-channel interleaved; the plugin folds any supported bus

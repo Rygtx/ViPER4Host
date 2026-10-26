@@ -60,8 +60,21 @@ juce_add_plugin(ViPER4Host
 
 juce_generate_juce_header(ViPER4Host)
 
+file(GLOB VIPER4HOST_LOCALISATION_FILES CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/Source/Localisation/*.json"
+)
+
+juce_add_binary_data(ViPER4HostLocalisationData
+  NAMESPACE Viper4HostLocalisationData
+  HEADER_NAME LocalisationBinaryData.h
+  SOURCES
+    ${VIPER4HOST_LOCALISATION_FILES}
+)
+
 target_sources(ViPER4Host
   PRIVATE
+    Source/Localisation.cpp
+    Source/Localisation.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/PluginProcessor.cpp
@@ -92,6 +105,7 @@ target_compile_options(ViPER4Host
 target_link_libraries(ViPER4Host
   PRIVATE
     juce::juce_audio_utils
+    ViPER4HostLocalisationData
     ViPERDSP
   PUBLIC
     juce::juce_recommended_config_flags

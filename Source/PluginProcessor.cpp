@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Localisation.h"
 
 ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -7,6 +8,17 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true))
     , parameters_(*this, nullptr, "PARAMS", createParameterLayout())
 {
+    parameters_.state.setProperty("uiLanguage", v4h::localisation::systemLanguage(), nullptr);
+}
+
+juce::String ViPER4HostAudioProcessor::getUiLanguage() const
+{
+    return parameters_.state.getProperty("uiLanguage", "en").toString();
+}
+
+void ViPER4HostAudioProcessor::setUiLanguage(const juce::String& languageCode)
+{
+    parameters_.state.setProperty("uiLanguage", languageCode, nullptr);
 }
 
 ViPER4HostAudioProcessor::~ViPER4HostAudioProcessor() = default;

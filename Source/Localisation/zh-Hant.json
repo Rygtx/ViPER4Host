@@ -1,0 +1,78 @@
+{
+  "code": "zh-Hant",
+  "displayName": "繁體中文",
+  "strings": {
+    "pluginTitle": "ViPER4Host",
+    "uiLanguage": "介面語言",
+
+    "groupMaster": "主輸出",
+    "limiterThreshold": "限幅閾值",
+    "limiterVolume": "輸出音量",
+    "limiterPan": "左右平衡",
+
+    "groupAGC": "自動音量補償",
+    "pgcEnable": "啟用自動音量補償",
+    "pgcStrength": "補償強度",
+    "pgcMaxGain": "最大補償",
+
+    "groupBass": "ViPER 低音增強",
+    "bassEnable": "啟用低音增強",
+    "bassMode": "低音模式",
+    "bassMode0": "自然",
+    "bassMode1": "純低音",
+    "bassMode2": "重低音",
+    "bassFreq": "低音頻率",
+    "bassGain": "低音增益",
+
+    "groupBassMono": "低音單聲道",
+    "bassMonoEnable": "啟用低音單聲道",
+    "bassMonoFreq": "單聲道頻率",
+    "bassMonoGain": "單聲道增益",
+
+    "groupClarity": "清晰度",
+    "clarityEnable": "啟用清晰度",
+    "clarityMode": "清晰度模式",
+    "clarityMode0": "自然",
+    "clarityMode1": "OZone",
+    "clarityMode2": "XHiFi",
+    "clarityGain": "清晰度增益",
+
+    "groupVHE": "耳機環繞＋",
+    "vheEnable": "啟用耳機環繞",
+    "vheQuality": "環繞級別",
+    "vheLevel1": "級別 1",
+    "vheLevel2": "級別 2",
+    "vheLevel3": "級別 3",
+    "vheLevel4": "級別 4",
+    "vheLevel5": "級別 5",
+
+    "groupField": "環繞擴展",
+    "fieldEnable": "啟用環繞擴展",
+    "fieldWidening": "擴展強度",
+    "fieldMidImage": "中置成像",
+    "fieldDepth": "縱深",
+
+    "groupReverb": "混響",
+    "reverbEnable": "啟用混響",
+    "reverbRoomSize": "房間大小",
+    "reverbWidth": "聲場寬度",
+    "reverbDamp": "高頻阻尼",
+    "reverbWet": "濕聲",
+    "reverbDry": "乾聲",
+
+    "groupCure": "聽覺保護",
+    "cureEnable": "啟用聽覺保護",
+    "curePreset": "交叉混音預設",
+    "curePreset1": "預設 1",
+    "curePreset2": "預設 2",
+    "curePreset3": "預設 3",
+
+    "groupTube": "電子管模擬",
+    "tubeEnable": "啟用電子管模擬",
+    "tubeModel": "電子管型號",
+    "tubeDrive": "驅動量",
+    "tubeMix": "混合比例",
+
+    "bypass": "旁路"
+  }
+}

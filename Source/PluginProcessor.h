@@ -34,6 +34,8 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getParametersState() { return parameters_; }
+    juce::String getUiLanguage() const;
+    void setUiLanguage(const juce::String& languageCode);
 
     static constexpr const char* pluginDisplayName = "ViPER4Host";
 

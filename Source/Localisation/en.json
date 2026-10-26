@@ -1,0 +1,78 @@
+{
+  "code": "en",
+  "displayName": "English",
+  "strings": {
+    "pluginTitle": "ViPER4Host",
+    "uiLanguage": "UI Language",
+
+    "groupMaster": "Master",
+    "limiterThreshold": "Limiter Threshold",
+    "limiterVolume": "Output Volume",
+    "limiterPan": "Channel Pan",
+
+    "groupAGC": "AGC",
+    "pgcEnable": "AGC Enable",
+    "pgcStrength": "AGC Strength",
+    "pgcMaxGain": "AGC Max Gain",
+
+    "groupBass": "ViPER Bass",
+    "bassEnable": "Bass Enable",
+    "bassMode": "Bass Mode",
+    "bassMode0": "Natural",
+    "bassMode1": "Pure Bass+",
+    "bassMode2": "Subwoofer",
+    "bassFreq": "Bass Frequency",
+    "bassGain": "Bass Gain",
+
+    "groupBassMono": "Bass Mono",
+    "bassMonoEnable": "Bass Mono Enable",
+    "bassMonoFreq": "Bass Mono Frequency",
+    "bassMonoGain": "Bass Mono Gain",
+
+    "groupClarity": "Clarity",
+    "clarityEnable": "Clarity Enable",
+    "clarityMode": "Clarity Mode",
+    "clarityMode0": "Natural",
+    "clarityMode1": "OZone",
+    "clarityMode2": "XHiFi",
+    "clarityGain": "Clarity Gain",
+
+    "groupVHE": "Headphone Surround+",
+    "vheEnable": "VHE Enable",
+    "vheQuality": "VHE Level",
+    "vheLevel1": "Level 1",
+    "vheLevel2": "Level 2",
+    "vheLevel3": "Level 3",
+    "vheLevel4": "Level 4",
+    "vheLevel5": "Level 5",
+
+    "groupField": "Field Surround",
+    "fieldEnable": "Field Surround Enable",
+    "fieldWidening": "Field Widening",
+    "fieldMidImage": "Field Mid Image",
+    "fieldDepth": "Field Depth",
+
+    "groupReverb": "Reverberation",
+    "reverbEnable": "Reverb Enable",
+    "reverbRoomSize": "Reverb Room Size",
+    "reverbWidth": "Reverb Width",
+    "reverbDamp": "Reverb Damp",
+    "reverbWet": "Reverb Wet",
+    "reverbDry": "Reverb Dry",
+
+    "groupCure": "Cure",
+    "cureEnable": "Cure Enable",
+    "curePreset": "Cure Preset",
+    "curePreset1": "Preset 1",
+    "curePreset2": "Preset 2",
+    "curePreset3": "Preset 3",
+
+    "groupTube": "Tube",
+    "tubeEnable": "Tube Enable",
+    "tubeModel": "Tube Model",
+    "tubeDrive": "Tube Drive",
+    "tubeMix": "Tube Mix",
+
+    "bypass": "Bypass"
+  }
+}
