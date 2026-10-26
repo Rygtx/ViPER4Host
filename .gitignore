@@ -1,0 +1,24 @@
+## Build artifacts
+build/
+*.user
+.vs/
+x64/
+Debug/
+Release/
+
+## Compiled files
+*.dll
+*.vst3
+*.exe
+*.obj
+*.pdb
+*.lib
+
+## Editor junk
+.vscode/
+.idea/
+
+## OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
