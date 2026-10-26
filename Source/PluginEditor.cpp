@@ -27,7 +27,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addGroup("groupCure", { "cureEnable", "curePreset" });
     addGroup("groupTube", { "tubeEnable", "tubeModel", "tubeDrive", "tubeMix" });
 
-    titleLabel_.setFont({ 16.0f, juce::Font::bold });
+    titleLabel_.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
     titleLabel_.setJustificationType(juce::Justification::centredLeft);
     languageLabel_.setJustificationType(juce::Justification::centredRight);
     for (const auto& option : v4h::localisation::availableLanguages())
@@ -42,7 +42,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 
     content_.setSize(defaultWidth, 0);
     viewport_.setViewedComponent(&content_, false);
-    viewport_.setScrollBarsShown(true, false);
+    viewport_.setScrollBarsShown(true, true);
     addAndMakeVisible(titleLabel_);
     addAndMakeVisible(languageLabel_);
     for (auto& button : languageButtons_)
@@ -96,8 +96,9 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
         }
         else
         {
-            row->slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-            row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 72, rowHeight);
+            row->slider.setSliderStyle(juce::Slider::LinearHorizontal);
+            row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, rowHeight);
+            row->label.setJustificationType(juce::Justification::centredRight);
             if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param))
                 row->slider.setRange(0.0, static_cast<double>(choiceParam->choices.size() - 1), 1.0);
             row->sliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, id, row->slider);
@@ -145,27 +146,29 @@ void ViPER4HostAudioProcessorEditor::resized()
 {
     auto headerArea = getLocalBounds().removeFromTop(headerHeight).reduced(gap, 0);
     titleLabel_.setBounds(headerArea.removeFromLeft(getWidth() / 2));
-    languageLabel_.setBounds(headerArea.removeFromRight(90));
 
+    auto langArea = headerArea.removeFromRight(90 + gap + 84 * static_cast<int>(languageButtons_.size()));
+    languageLabel_.setBounds(langArea.removeFromLeft(90));
     for (auto& button : languageButtons_)
-        button->setBounds(headerArea.removeFromRight(84).withSizeKeepingCentre(80, 24));
+        button->setBounds(langArea.removeFromLeft(84).withSizeKeepingCentre(80, 24));
 
     viewport_.setBounds(getLocalBounds().removeFromBottom(getHeight() - headerHeight).reduced(gap));
 
-    // Two-column layout inside the viewport content.
-    const int contentWidth = content_.getWidth();
+    // Two-column layout inside the viewport content; each column stacks
+    // independently so groups never leave holes when heights differ.
+    // Content fills the viewport width (min 560, below that scroll sideways).
+    const int contentWidth = juce::jmax(560, viewport_.getMaximumVisibleWidth());
     const int columnWidth = (contentWidth - gap * 3) / 2;
 
-    int y = gap;
-    int columnHeights[2] = { gap, gap };
+    int columnBottoms[2] = { gap, gap };
     for (auto& pg : groups_)
     {
         const int height = titleHeight + static_cast<int>(pg->rows.size()) * rowHeight;
-        const int column = columnHeights[0] <= columnHeights[1] ? 0 : 1;
+        const int column = columnBottoms[0] <= columnBottoms[1] ? 0 : 1;
         const int x = column == 0 ? gap : gap + columnWidth + gap;
 
-        pg->group.setBounds(x, y, columnWidth, height);
-        auto rowsArea = juce::Rectangle<int>(x + 8, y + titleHeight, columnWidth - 16, static_cast<int>(pg->rows.size()) * rowHeight);
+        pg->group.setBounds(x, columnBottoms[column], columnWidth, height);
+        auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, static_cast<int>(pg->rows.size()) * rowHeight);
         for (auto& row : pg->rows)
         {
             auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
@@ -176,12 +179,10 @@ void ViPER4HostAudioProcessorEditor::resized()
                 row->slider.setBounds(rowBounds);
         }
 
-        columnHeights[column] = y + height + gap;
-        if (column == 1)
-            y = juce::jmax(columnHeights[0], columnHeights[1]);
+        columnBottoms[column] += height + gap;
     }
 
-    content_.setSize(contentWidth, juce::jmax(columnHeights[0], columnHeights[1]) + gap);
+    content_.setSize(contentWidth, juce::jmax(columnBottoms[0], columnBottoms[1]) + gap);
 }
 
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)

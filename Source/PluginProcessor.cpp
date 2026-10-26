@@ -37,7 +37,19 @@ ViPER4HostAudioProcessor::createParameterLayout()
     };
     auto addFloat = [&layout](const char* id, const char* name, float min, float max, float def,
                           const char* suffix = "") {
-        layout.add(std::make_unique<Parameter>(id, name, juce::NormalisableRange<float>(min, max), def, suffix));
+        // ponytail: range-based decimals (wide ranges are Hz/integers); pass
+        // explicit stringFromValue per param if one ever needs custom formatting.
+        const int decimals = max <= 10.0f ? 2 : 0;
+        const juce::String label = suffix;
+        layout.add(std::make_unique<Parameter>(
+            id, name, juce::NormalisableRange<float>(min, max), def,
+            juce::AudioParameterFloatAttributes()
+                .withLabel(label)
+                // JUCE 8's getText() doesn't append the label, so do it here.
+                .withStringFromValueFunction([decimals, label](float v, int) {
+                    auto text = juce::String(v, decimals);
+                    return label.isNotEmpty() ? text + " " + label : text;
+                })));
     };
     auto addChoice = [&layout](const char* id, const char* name, const juce::StringArray& choices, int def = 0) {
         layout.add(std::make_unique<ChoiceParameter>(id, name, choices, def));
