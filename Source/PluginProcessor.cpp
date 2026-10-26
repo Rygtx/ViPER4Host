@@ -73,6 +73,11 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
+    // Defaults mirror ViPER4Windows (F:\Project\ViPER4Windows,
+    // ViPER4Windows/lib/models/viper_state.dart), converted to host units.
+    // Exception: FET/MBC Adapt stays at 4 s — V4W's engine copy stores a raw
+    // log coefficient there that doesn't map to seconds.
+
     auto addBool = [&layout](const char* id, const char* name, bool def = false) {
         layout.add(std::make_unique<BoolParameter>(id, name, def));
     };
@@ -115,26 +120,26 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // FET compressor
     addBool("fetEnable", "FET Enable");
-    addFloat("fetThreshold", "FET Threshold", -48.0f, 0.0f, -24.0f, " dB");
-    addFloat("fetRatio", "FET Ratio", 0.5f, 20.0f, 4.0f, " :1");
-    addFloat("fetKnee", "FET Knee", 0.0f, 12.0f, 3.0f, " dB");
-    addBool("fetKneeAuto", "FET Auto Knee");
+    addFloat("fetThreshold", "FET Threshold", -48.0f, 0.0f, -18.0f, " dB");
+    addFloat("fetRatio", "FET Ratio", 0.5f, 20.0f, 1.0f, " :1");
+    addFloat("fetKnee", "FET Knee", 0.0f, 12.0f, 0.0f, " dB");
+    addBool("fetKneeAuto", "FET Auto Knee", true);
     addFloat("fetGain", "FET Makeup Gain", 0.0f, 24.0f, 0.0f, " dB");
-    addBool("fetGainAuto", "FET Auto Gain");
-    addFloat("fetAttack", "FET Attack", 1.0f, 100.0f, 10.0f, " ms");
-    addBool("fetAttackAuto", "FET Auto Attack");
+    addBool("fetGainAuto", "FET Auto Gain", true);
+    addFloat("fetAttack", "FET Attack", 1.0f, 100.0f, 20.0f, " ms");
+    addBool("fetAttackAuto", "FET Auto Attack", true);
     addFloat("fetRelease", "FET Release", 5.0f, 500.0f, 50.0f, " ms");
-    addBool("fetReleaseAuto", "FET Auto Release");
-    addFloat("fetKneeMulti", "FET Knee Multi", 0.0f, 4.0f, 2.0f);
-    addFloat("fetMaxAttack", "FET Max Attack", 1.0f, 100.0f, 20.0f, " ms");
-    addFloat("fetMaxRelease", "FET Max Release", 5.0f, 500.0f, 100.0f, " ms");
-    addFloat("fetCrest", "FET Crest Time", 5.0f, 300.0f, 50.0f, " ms");
+    addBool("fetReleaseAuto", "FET Auto Release", true);
+    addFloat("fetKneeMulti", "FET Knee Multi", 0.0f, 4.0f, 0.0f);
+    addFloat("fetMaxAttack", "FET Max Attack", 1.0f, 100.0f, 80.0f, " ms");
+    addFloat("fetMaxRelease", "FET Max Release", 5.0f, 500.0f, 200.0f, " ms");
+    addFloat("fetCrest", "FET Crest Time", 5.0f, 300.0f, 100.0f, " ms");
     addFloat("fetAdapt", "FET Adapt Time", 1.0f, 16.0f, 4.0f, " s");
-    addBool("fetNoClip", "FET No Clip");
+    addBool("fetNoClip", "FET No Clip", true);
 
     // Graphic equalizer
     addBool("eqEnable", "EQ Enable");
-    addChoice("eqBandCount", "EQ Bands", { "10", "15", "25", "31" }, 3);
+    addChoice("eqBandCount", "EQ Bands", { "10", "15", "25", "31" }, 0);
     for (int i = 1; i <= 31; ++i)
     {
         auto id = "eqBand" + juce::String(i);
@@ -143,15 +148,15 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // Dynamic equalizer
     addBool("deEnable", "DynEQ Enable");
-    addChoice("deBandCount", "DynEQ Bands", { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 5);
-    constexpr float deDefaultFreqs[] = { 100, 180, 320, 580, 1000, 1800, 3200, 5800, 10000, 16000 };
+    addChoice("deBandCount", "DynEQ Bands", { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 2);
+    constexpr float deDefaultFreqs[] = { 60, 150, 400, 60, 60, 60, 60, 60, 60, 60 };
     for (int b = 1; b <= 10; ++b)
     {
         const auto pfx = "de" + juce::String(b);
         addFloat((pfx + "Freq").toRawUTF8(), (pfx + "Freq").toRawUTF8(), 20.0f, 20000.0f, deDefaultFreqs[b - 1], " Hz");
-        addFloat((pfx + "Q").toRawUTF8(), (pfx + "Q").toRawUTF8(), 0.5f, 8.0f, 1.0f);
+        addFloat((pfx + "Q").toRawUTF8(), (pfx + "Q").toRawUTF8(), 0.5f, 8.0f, b == 3 ? 1.5f : 1.0f);
         addFloat((pfx + "Gain").toRawUTF8(), (pfx + "Gain").toRawUTF8(), -12.0f, 12.0f, 0.0f, " dB");
-        addFloat((pfx + "Threshold").toRawUTF8(), (pfx + "Threshold").toRawUTF8(), -80.0f, 0.0f, -30.0f, " dB");
+        addFloat((pfx + "Threshold").toRawUTF8(), (pfx + "Threshold").toRawUTF8(), -80.0f, 0.0f, -20.0f, " dB");
         addFloat((pfx + "Attack").toRawUTF8(), (pfx + "Attack").toRawUTF8(), 1.0f, 100.0f, 10.0f, " ms");
         addFloat((pfx + "Release").toRawUTF8(), (pfx + "Release").toRawUTF8(), 10.0f, 500.0f, 100.0f, " ms");
         addChoice((pfx + "Type").toRawUTF8(), (pfx + "Type").toRawUTF8(), { "Peak", "Low Shelf", "High Shelf" });
@@ -159,29 +164,29 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // Psychoacoustic bass
     addBool("pBassEnable", "Psychoacoustic Bass Enable");
-    addFloat("pBassCutoff", "PB Cutoff", 60.0f, 150.0f, 100.0f, " Hz");
+    addFloat("pBassCutoff", "PB Cutoff", 60.0f, 150.0f, 80.0f, " Hz");
     addFloat("pBassIntensity", "PB Intensity", 0.0f, 1.0f, 0.5f);
-    addChoice("pBassHarmonicOrder", "PB Harmonic Order", { "2", "3", "4", "5" });
-    addFloat("pBassOriginalLevel", "PB Original Level", 0.0f, 1.0f, 0.5f);
+    addChoice("pBassHarmonicOrder", "PB Harmonic Order", { "2", "3", "4", "5" }, 1);
+    addFloat("pBassOriginalLevel", "PB Original Level", 0.0f, 1.0f, 1.0f);
 
     // ViPER Bass
     addBool("bassEnable", "Bass Enable");
     addChoice("bassMode", "Bass Mode", { "Natural", "Pure Bass+", "Subwoofer" });
-    addFloat("bassFreq", "Bass Frequency", 15.0f, 150.0f, 60.0f, " Hz");
-    addFloat("bassGain", "Bass Gain", 0.5f, 10.0f, 1.0f, "x");
-    addBool("bassAntiPop", "Bass Anti-Pop", true);
+    addFloat("bassFreq", "Bass Frequency", 15.0f, 150.0f, 70.0f, " Hz");
+    addFloat("bassGain", "Bass Gain", 0.5f, 10.0f, 0.5f, "x");
+    addBool("bassAntiPop", "Bass Anti-Pop");
 
     // Bass Mono
     addBool("bassMonoEnable", "Bass Mono Enable");
     addChoice("bassMonoMode", "Bass Mono Mode", { "Natural", "Pure Bass+", "Subwoofer" });
-    addFloat("bassMonoFreq", "Bass Mono Frequency", 15.0f, 150.0f, 60.0f, " Hz");
-    addFloat("bassMonoGain", "Bass Mono Gain", 0.5f, 10.0f, 1.0f, "x");
-    addBool("bassMonoAntiPop", "Bass Mono Anti-Pop", true);
+    addFloat("bassMonoFreq", "Bass Mono Frequency", 15.0f, 150.0f, 70.0f, " Hz");
+    addFloat("bassMonoGain", "Bass Mono Gain", 0.5f, 10.0f, 0.5f, "x");
+    addBool("bassMonoAntiPop", "Bass Mono Anti-Pop");
 
     // Spectrum extension
     addBool("specExtEnable", "Spectrum Extension Enable");
-    addFloat("specExtStrength", "SE Reference Freq", 2200.0f, 8200.0f, 5500.0f, " Hz");
-    addFloat("specExtExciter", "SE Exciter", 0.0f, 6.0f, 1.0f);
+    addFloat("specExtStrength", "SE Reference Freq", 2200.0f, 8200.0f, 7600.0f, " Hz");
+    addFloat("specExtExciter", "SE Exciter", 0.0f, 6.0f, 0.0f);
 
     // Convolver
     addBool("convEnable", "Convolver Enable");
@@ -192,24 +197,24 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // Field surround
     addBool("fieldEnable", "Field Surround Enable");
-    addFloat("fieldWidening", "Field Widening", 0.0f, 8.0f, 1.0f);
-    addFloat("fieldMidImage", "Field Mid Image", 1.0f, 2.0f, 1.0f);
-    addFloat("fieldDepth", "Field Depth", 200.0f, 950.0f, 500.0f);
+    addFloat("fieldWidening", "Field Widening", 0.0f, 8.0f, 0.0f);
+    addFloat("fieldMidImage", "Field Mid Image", 1.0f, 2.0f, 1.5f);
+    addFloat("fieldDepth", "Field Depth", 200.0f, 950.0f, 200.0f);
 
     // Differential surround
     addBool("diffEnable", "Diff Surround Enable");
-    addFloat("diffDelay", "Diff Delay", 1.0f, 20.0f, 2.0f, " ms");
+    addFloat("diffDelay", "Diff Delay", 1.0f, 20.0f, 5.0f, " ms");
     addBool("diffReverse", "Diff Reverse");
-    addFloat("diffMix", "Diff Wet/Dry Mix", 0.0f, 1.0f, 0.5f);
-    addFloat("diffLpCutoff", "Diff LP Cutoff", 0.0f, 20000.0f, 20000.0f, " Hz");
+    addFloat("diffMix", "Diff Wet/Dry Mix", 0.0f, 1.0f, 1.0f);
+    addFloat("diffLpCutoff", "Diff LP Cutoff", 0.0f, 20000.0f, 0.0f, " Hz");
 
     // Stereo imager
     addBool("siEnable", "Stereo Imager Enable");
     addFloat("siLowWidth", "SI Low Width", 0.0f, 2.0f, 1.0f);
     addFloat("siMidWidth", "SI Mid Width", 0.0f, 2.0f, 1.0f);
     addFloat("siHighWidth", "SI High Width", 0.0f, 2.0f, 1.0f);
-    addFloat("siLowCrossover", "SI Low Crossover", 80.0f, 400.0f, 250.0f, " Hz");
-    addFloat("siHighCrossover", "SI High Crossover", 2000.0f, 8000.0f, 4500.0f, " Hz");
+    addFloat("siLowCrossover", "SI Low Crossover", 80.0f, 400.0f, 200.0f, " Hz");
+    addFloat("siHighCrossover", "SI High Crossover", 2000.0f, 8000.0f, 4000.0f, " Hz");
 
     // Headphone surround+ (VHE)
     addBool("vheEnable", "VHE Enable");
@@ -217,18 +222,18 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // Reverberation
     addBool("reverbEnable", "Reverb Enable");
-    addFloat("reverbRoomSize", "Reverb Room Size", 0.0f, 1.0f, 0.3f);
-    addFloat("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.5f);
-    addFloat("reverbDamp", "Reverb Damp", 0.0f, 1.0f, 0.5f);
-    addFloat("reverbWet", "Reverb Wet", 0.0f, 1.0f, 0.25f);
+    addFloat("reverbRoomSize", "Reverb Room Size", 0.0f, 1.0f, 0.0f);
+    addFloat("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.0f);
+    addFloat("reverbDamp", "Reverb Damp", 0.0f, 1.0f, 0.0f);
+    addFloat("reverbWet", "Reverb Wet", 0.0f, 1.0f, 0.0f);
     addFloat("reverbDry", "Reverb Dry", 0.0f, 1.0f, 1.0f);
 
     // Dynamic system
     addBool("dsEnable", "Dynamic System Enable");
-    addFloat("dsXLow", "DS X Low", 0.0f, 2400.0f, 300.0f, " Hz");
-    addFloat("dsXHigh", "DS X High", 0.0f, 12000.0f, 6000.0f, " Hz");
-    addFloat("dsYLow", "DS Y Low", 0.0f, 200.0f, 100.0f, " Hz");
-    addFloat("dsYHigh", "DS Y High", 0.0f, 300.0f, 150.0f, " Hz");
+    addFloat("dsXLow", "DS X Low", 0.0f, 2400.0f, 100.0f, " Hz");
+    addFloat("dsXHigh", "DS X High", 0.0f, 12000.0f, 5600.0f, " Hz");
+    addFloat("dsYLow", "DS Y Low", 0.0f, 200.0f, 40.0f, " Hz");
+    addFloat("dsYHigh", "DS Y High", 0.0f, 300.0f, 80.0f, " Hz");
     addFloat("dsSideGainLow", "DS Side Gain Low", 0.0f, 1.0f, 0.5f);
     addFloat("dsSideGainHigh", "DS Side Gain High", 0.0f, 1.0f, 0.5f);
     addFloat("dsStrength", "DS Strength", 0.0f, 1.0f, 0.5f);
@@ -236,7 +241,7 @@ ViPER4HostAudioProcessor::createParameterLayout()
     // ViPER Clarity
     addBool("clarityEnable", "Clarity Enable");
     addChoice("clarityMode", "Clarity Mode", { "Natural", "OZone", "XHiFi" });
-    addFloat("clarityGain", "Clarity Gain", 0.0f, 4.5f, 1.0f, "x");
+    addFloat("clarityGain", "Clarity Gain", 0.0f, 4.5f, 0.5f, "x");
 
     // Cure crossfeed
     addBool("cureEnable", "Cure Enable");
@@ -257,8 +262,8 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // Multiband compressor
     addBool("mbcEnable", "MBC Enable");
-    addChoice("mbcBandCount", "MBC Bands", { "1", "2", "3", "4", "5" }, 2);
-    constexpr float mbcDefaultCrossovers[] = { 200.0f, 1000.0f, 4000.0f, 9000.0f };
+    addChoice("mbcBandCount", "MBC Bands", { "1", "2", "3", "4", "5" }, 4);
+    constexpr float mbcDefaultCrossovers[] = { 120.0f, 500.0f, 4000.0f, 8000.0f };
     for (int c = 1; c <= 4; ++c)
     {
         auto id = "mbcCross" + juce::String(c);
@@ -267,23 +272,23 @@ ViPER4HostAudioProcessor::createParameterLayout()
     for (int b = 1; b <= 5; ++b)
     {
         const auto pfx = "mbc" + juce::String(b);
-        addBool((pfx + "Enable").toRawUTF8(), (pfx + "Enable").toRawUTF8(), b <= 3);
-        addFloat((pfx + "Threshold").toRawUTF8(), (pfx + "Threshold").toRawUTF8(), -48.0f, 0.0f, -24.0f, " dB");
-        addFloat((pfx + "Ratio").toRawUTF8(), (pfx + "Ratio").toRawUTF8(), 0.5f, 20.0f, 4.0f, " :1");
-        addFloat((pfx + "Knee").toRawUTF8(), (pfx + "Knee").toRawUTF8(), 0.0f, 12.0f, 3.0f, " dB");
-        addBool((pfx + "KneeAuto").toRawUTF8(), (pfx + "KneeAuto").toRawUTF8());
+        addBool((pfx + "Enable").toRawUTF8(), (pfx + "Enable").toRawUTF8(), true);
+        addFloat((pfx + "Threshold").toRawUTF8(), (pfx + "Threshold").toRawUTF8(), -48.0f, 0.0f, -18.0f, " dB");
+        addFloat((pfx + "Ratio").toRawUTF8(), (pfx + "Ratio").toRawUTF8(), 0.5f, 20.0f, 2.0f, " :1");
+        addFloat((pfx + "Knee").toRawUTF8(), (pfx + "Knee").toRawUTF8(), 0.0f, 12.0f, 0.0f, " dB");
+        addBool((pfx + "KneeAuto").toRawUTF8(), (pfx + "KneeAuto").toRawUTF8(), true);
         addFloat((pfx + "Gain").toRawUTF8(), (pfx + "Gain").toRawUTF8(), 0.0f, 24.0f, 0.0f, " dB");
-        addBool((pfx + "GainAuto").toRawUTF8(), (pfx + "GainAuto").toRawUTF8());
-        addFloat((pfx + "Attack").toRawUTF8(), (pfx + "Attack").toRawUTF8(), 1.0f, 100.0f, 10.0f, " ms");
-        addBool((pfx + "AttackAuto").toRawUTF8(), (pfx + "AttackAuto").toRawUTF8());
-        addFloat((pfx + "Release").toRawUTF8(), (pfx + "Release").toRawUTF8(), 5.0f, 500.0f, 50.0f, " ms");
-        addBool((pfx + "ReleaseAuto").toRawUTF8(), (pfx + "ReleaseAuto").toRawUTF8());
-        addFloat((pfx + "KneeMulti").toRawUTF8(), (pfx + "KneeMulti").toRawUTF8(), 0.0f, 4.0f, 2.0f);
-        addFloat((pfx + "MaxAttack").toRawUTF8(), (pfx + "MaxAttack").toRawUTF8(), 1.0f, 100.0f, 20.0f, " ms");
-        addFloat((pfx + "MaxRelease").toRawUTF8(), (pfx + "MaxRelease").toRawUTF8(), 5.0f, 500.0f, 100.0f, " ms");
-        addFloat((pfx + "Crest").toRawUTF8(), (pfx + "Crest").toRawUTF8(), 5.0f, 300.0f, 50.0f, " ms");
+        addBool((pfx + "GainAuto").toRawUTF8(), (pfx + "GainAuto").toRawUTF8(), true);
+        addFloat((pfx + "Attack").toRawUTF8(), (pfx + "Attack").toRawUTF8(), 1.0f, 100.0f, 1.0f, " ms");
+        addBool((pfx + "AttackAuto").toRawUTF8(), (pfx + "AttackAuto").toRawUTF8(), true);
+        addFloat((pfx + "Release").toRawUTF8(), (pfx + "Release").toRawUTF8(), 5.0f, 500.0f, 100.0f, " ms");
+        addBool((pfx + "ReleaseAuto").toRawUTF8(), (pfx + "ReleaseAuto").toRawUTF8(), true);
+        addFloat((pfx + "KneeMulti").toRawUTF8(), (pfx + "KneeMulti").toRawUTF8(), 0.0f, 4.0f, 0.0f);
+        addFloat((pfx + "MaxAttack").toRawUTF8(), (pfx + "MaxAttack").toRawUTF8(), 1.0f, 100.0f, 44.0f, " ms");
+        addFloat((pfx + "MaxRelease").toRawUTF8(), (pfx + "MaxRelease").toRawUTF8(), 5.0f, 500.0f, 200.0f, " ms");
+        addFloat((pfx + "Crest").toRawUTF8(), (pfx + "Crest").toRawUTF8(), 5.0f, 300.0f, 100.0f, " ms");
         addFloat((pfx + "Adapt").toRawUTF8(), (pfx + "Adapt").toRawUTF8(), 1.0f, 16.0f, 4.0f, " s");
-        addBool((pfx + "NoClip").toRawUTF8(), (pfx + "NoClip").toRawUTF8());
+        addBool((pfx + "NoClip").toRawUTF8(), (pfx + "NoClip").toRawUTF8(), true);
     }
 
     addBool("bypass", "Bypass");
