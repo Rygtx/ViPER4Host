@@ -22,5 +22,5 @@ cd /d "%~dp0"
 
 if "%1"=="clean" rmdir /s /q build
 
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release %2 %3 %4 || exit /b 1
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo %2 %3 %4 || exit /b 1
 cmake --build build --parallel || exit /b 1
