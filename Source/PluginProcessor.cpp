@@ -93,7 +93,14 @@ ViPER4HostAudioProcessor::createParameterLayout()
                 .withLabel(label)
                 // JUCE 8's getText() doesn't append the label, so do it here.
                 .withStringFromValueFunction([decimals, label](float v, int) {
-                    auto text = juce::String(v, decimals);
+                    // String(v, 0) isn't "0 decimals" — it falls back to %g
+                    // (6 sig digits, juce_String.cpp writeDouble), so round
+                    // integer params explicitly.
+                    auto text = decimals > 0 ? juce::String(v, decimals)
+                                             : juce::String(juce::roundToInt(v));
+                    while (text.containsChar('.') // 1.00 -> 1, 0.50 -> 0.5
+                        && (text.endsWithChar('0') || text.endsWithChar('.')))
+                        text = text.dropLastCharacters(1);
                     return label.isNotEmpty() ? text + " " + label : text;
                 })));
     };
