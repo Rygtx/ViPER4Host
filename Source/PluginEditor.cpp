@@ -6,10 +6,32 @@ namespace
 constexpr int defaultWidth = 660;
 constexpr int defaultHeight = 600;
 constexpr int headerHeight = 40;
+constexpr int tabBarHeight = 28;
 constexpr int gap = 8;
 constexpr int rowHeight = 30;
 constexpr int titleHeight = 24;
 constexpr int labelWidth = 130;
+
+// Category tabs, in order. Count must match numPages in the header.
+const char* pageKeys[] = { "tabOutput", "tabDynamics", "tabEq", "tabBass", "tabStage", "tabFx" };
+static_assert(sizeof(pageKeys) / sizeof(pageKeys[0]) == ViPER4HostAudioProcessorEditor::numPages);
+
+// Which category tab a group lives on. 0 output, 1 dynamics, 2 eq, 3 bass,
+// 4 surround, 5 everything else.
+int pageOf(const juce::String& gid)
+{
+    if (gid == "groupMaster" || gid == "groupAGC" || gid == "groupLufs")
+        return 0;
+    if (gid == "groupFet" || gid.startsWith("groupMbc"))
+        return 1;
+    if (gid == "groupEq" || gid.startsWith("groupDe") || gid == "groupCure")
+        return 2;
+    if (gid == "groupPsyBass" || gid == "groupBass" || gid == "groupBassMono" || gid == "groupSpecExt")
+        return 3;
+    if (gid == "groupField" || gid == "groupDiff" || gid == "groupSi" || gid == "groupDs")
+        return 4;
+    return 5;
+}
 
 // Band params (mbc3Threshold, de7Freq) share one label key per role across
 // all bands: mbcN* -> mbcBand*, deN* -> deBand*.
@@ -100,6 +122,18 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     for (const auto& option : v4h::localisation::availableLanguages())
         languageBox_.addItem(option.displayName, static_cast<int>(languageBox_.getNumItems()) + 1);
     languageBox_.onChange = [this] { selectLanguage(); };
+
+    for (int i = 0; i < numPages; ++i)
+    {
+        pageButtons_[i].setClickingTogglesState(true);
+        pageButtons_[i].setRadioGroupId(1);
+        pageButtons_[i].onClick = [this, i] {
+            currentPage_ = i;
+            resized();
+        };
+        addAndMakeVisible(pageButtons_[i]);
+    }
+    pageButtons_[0].setToggleState(true, juce::dontSendNotification);
 
     content_.setSize(defaultWidth, 0);
     viewport_.setViewedComponent(&content_, false);
@@ -196,6 +230,17 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
         pg->group.addAndMakeVisible(pg->fileStatus);
     }
 
+    pg->page = pageOf(groupId);
+    // Band sub-groups start folded; everything else starts open.
+    pg->collapsed = groupId.startsWith("groupDeB") || groupId.startsWith("groupMbcB");
+    pg->collapseButton.setButtonText(pg->collapsed ? "+" : "-");
+    pg->collapseButton.onClick = [this, raw = pg.get()] {
+        raw->collapsed = !raw->collapsed;
+        raw->collapseButton.setButtonText(raw->collapsed ? "+" : "-");
+        resized();
+    };
+    pg->group.addAndMakeVisible(pg->collapseButton);
+
     content_.addAndMakeVisible(pg->group);
     pg->group.toBack();
     groups_.push_back(std::move(pg));
@@ -232,36 +277,28 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
     const int deN = bandCount("deBandCount") + 1;
     const int mbcN = bandCount("mbcBandCount") + 1;
 
-    const auto setRowVisible = [](ParamRow& row, bool on) {
-        row.label.setVisible(on);
-        row.slider.setVisible(on);
-        row.combo.setVisible(on);
-        row.toggle.setVisible(on);
-    };
-
+    // Only records the band rule; resized() applies visibility (the row may
+    // also be hidden by a folded group or an inactive page).
     for (auto& pg : groups_)
     {
         const auto& gid = pg->groupId;
         if (gid == "groupEq")
         {
             for (auto& row : pg->rows)
-                setRowVisible(*row, row->paramId.fromFirstOccurrenceOf("eqBand", false, false).getIntValue() <= eqN);
+                row->bandVisible = row->paramId.fromFirstOccurrenceOf("eqBand", false, false).getIntValue() <= eqN;
         }
         else if (gid == "groupMbc")
         {
             // N bands need N-1 crossovers.
             for (auto& row : pg->rows)
                 if (row->paramId.startsWith("mbcCross"))
-                    setRowVisible(*row, row->paramId.fromFirstOccurrenceOf("mbcCross", false, false).getIntValue() < mbcN);
+                    row->bandVisible = row->paramId.fromFirstOccurrenceOf("mbcCross", false, false).getIntValue() < mbcN;
         }
         else if (gid.startsWith("groupDeB") || gid.startsWith("groupMbcB"))
         {
             const auto tag = gid.startsWith("groupDeB") ? "groupDeB" : "groupMbcB";
             const int band = gid.fromFirstOccurrenceOf(tag, false, false).getIntValue();
             pg->visible = band <= (gid.startsWith("groupDeB") ? deN : mbcN);
-            pg->group.setVisible(pg->visible);
-            for (auto& row : pg->rows)
-                setRowVisible(*row, pg->visible);
         }
     }
     resized();
@@ -320,6 +357,8 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
 
     titleLabel_.setText(tr(lang, "pluginTitle"), juce::dontSendNotification);
     languageLabel_.setText(tr(lang, "uiLanguage"), juce::dontSendNotification);
+    for (int i = 0; i < numPages; ++i)
+        pageButtons_[i].setButtonText(tr(lang, pageKeys[i]));
 
     for (auto& pg : groups_)
     {
@@ -344,59 +383,94 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
 
 void ViPER4HostAudioProcessorEditor::resized()
 {
-    auto headerArea = getLocalBounds().removeFromTop(headerHeight).reduced(gap, 0);
+    auto body = getLocalBounds();
+    auto headerArea = body.removeFromTop(headerHeight).reduced(gap, 0);
     titleLabel_.setBounds(headerArea.removeFromLeft(getWidth() / 2));
 
     auto langArea = headerArea.removeFromRight(90 + gap + 120);
     languageLabel_.setBounds(langArea.removeFromLeft(90));
     languageBox_.setBounds(langArea.withSizeKeepingCentre(120, 26));
 
-    viewport_.setBounds(getLocalBounds().removeFromBottom(getHeight() - headerHeight).reduced(gap));
+    auto tabArea = body.removeFromTop(tabBarHeight).reduced(gap, 0);
+    const int tabWidth = (tabArea.getWidth() - gap * (numPages - 1)) / numPages;
+    for (int i = 0; i < numPages; ++i)
+    {
+        pageButtons_[i].setBounds(tabArea.removeFromLeft(tabWidth));
+        tabArea.removeFromLeft(gap);
+    }
+
+    viewport_.setBounds(body.reduced(gap));
 
     // Two-column layout inside the viewport content; each column stacks
     // independently so groups never leave holes when heights differ.
     // Content fills the viewport width (min 560, below that scroll sideways).
+    // Only groups on the current page are laid out.
     const int contentWidth = juce::jmax(560, viewport_.getMaximumVisibleWidth());
     const int columnWidth = (contentWidth - gap * 3) / 2;
+
+    const auto applyVis = [](ParamRow& row, bool on) {
+        row.label.setVisible(on);
+        row.slider.setVisible(on);
+        row.combo.setVisible(on);
+        row.toggle.setVisible(on);
+    };
 
     int columnBottoms[2] = { gap, gap };
     for (auto& pg : groups_)
     {
-        if (!pg->visible)
+        const bool show = pg->visible && pg->page == currentPage_;
+        pg->group.setVisible(show);
+        if (!show)
+        {
+            for (auto& row : pg->rows)
+                applyVis(*row, false);
             continue;
+        }
+
         int rowCount = 0;
         for (auto& row : pg->rows)
-            if (row->label.isVisible())
+        {
+            const bool on = row->bandVisible && !pg->collapsed;
+            applyVis(*row, on);
+            if (on)
                 ++rowCount;
-        const int fileRowHeight = pg->hasFileRow ? rowHeight : 0;
-        const int height = titleHeight + rowCount * rowHeight + fileRowHeight;
+        }
+
+        const bool collapsed = pg->collapsed;
+        const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
+        const int height = titleHeight + (collapsed ? 0 : rowCount * rowHeight + fileRowHeight);
         const int column = columnBottoms[0] <= columnBottoms[1] ? 0 : 1;
         const int x = column == 0 ? gap : gap + columnWidth + gap;
 
         pg->group.setBounds(x, columnBottoms[column], columnWidth, height);
-        auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
-        for (auto& row : pg->rows)
+        pg->collapseButton.setBounds(juce::Rectangle<int>(columnWidth - 30, 2, 24, 20));
+
+        if (!collapsed)
         {
-            if (!row->label.isVisible())
-                continue;
-            auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
-            row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
-            if (row->buttonAttachment != nullptr)
-                row->toggle.setBounds(rowBounds.removeFromRight(44).withSizeKeepingCentre(40, 20));
-            else if (row->comboAttachment != nullptr)
-                row->combo.setBounds(rowBounds.removeFromLeft(120));
-            else
-                row->slider.setBounds(rowBounds);
-        }
-        if (pg->hasFileRow)
-        {
-            // File row is a child of pg->group: bounds are group-relative,
-            // unlike the param rows which live in content_ coordinates.
-            auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
-                columnWidth - 16, rowHeight).reduced(4, 1);
-            pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
-            pg->fileButton.setBounds(fileBounds.removeFromLeft(90).withSizeKeepingCentre(86, 24));
-            pg->fileStatus.setBounds(fileBounds);
+            auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            for (auto& row : pg->rows)
+            {
+                if (!row->label.isVisible())
+                    continue;
+                auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
+                row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
+                if (row->buttonAttachment != nullptr)
+                    row->toggle.setBounds(rowBounds.removeFromRight(44).withSizeKeepingCentre(40, 20));
+                else if (row->comboAttachment != nullptr)
+                    row->combo.setBounds(rowBounds.removeFromLeft(120));
+                else
+                    row->slider.setBounds(rowBounds);
+            }
+            if (pg->hasFileRow)
+            {
+                // File row is a child of pg->group: bounds are group-relative,
+                // unlike the param rows which live in content_ coordinates.
+                auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
+                    columnWidth - 16, rowHeight).reduced(4, 1);
+                pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
+                pg->fileButton.setBounds(fileBounds.removeFromLeft(90).withSizeKeepingCentre(86, 24));
+                pg->fileStatus.setBounds(fileBounds);
+            }
         }
 
         columnBottoms[column] += height + gap;

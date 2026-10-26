@@ -5,6 +5,13 @@
     "pluginTitle": "ViPER4Host",
     "uiLanguage": "UI Language",
 
+    "tabOutput": "Output",
+    "tabDynamics": "Dynamics",
+    "tabEq": "EQ",
+    "tabBass": "Bass",
+    "tabStage": "Surround",
+    "tabFx": "Effects",
+
     "groupMaster": "Master",
     "limiterThreshold": "Limiter Threshold",
     "limiterVolume": "Output Volume",

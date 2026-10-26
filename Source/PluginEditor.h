@@ -9,6 +9,9 @@
 class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
+    // Category tab count; keep in sync with pageKeys in the .cpp.
+    static constexpr int numPages = 6;
+
     explicit ViPER4HostAudioProcessorEditor(ViPER4HostAudioProcessor&);
     ~ViPER4HostAudioProcessorEditor() override;
 
@@ -19,6 +22,9 @@ private:
     struct ParamRow
     {
         juce::String paramId;
+        // Band-count rule (EQ/DEQ/MBC); actual visibility is applied in
+        // resized() as bandVisible && !group collapsed.
+        bool bandVisible = true;
         juce::Label label;
         juce::Slider slider;       // for float params
         juce::ComboBox combo;      // for choice params
@@ -46,6 +52,11 @@ private:
         std::unique_ptr<juce::ParameterAttachment> enableAttachment;
         // Band-count dependent groups (EQ/DynEQ/MBC bands) can be fully hidden.
         bool visible = true;
+        // Category tab this group lives on, plus its fold state. A folded
+        // group shows only its title bar; the button lives in that bar.
+        int page = 0;
+        bool collapsed = false;
+        juce::TextButton collapseButton;
 
         void setControlsEnabled(bool enabled);
     };
@@ -68,6 +79,8 @@ private:
     std::vector<std::unique_ptr<juce::ParameterAttachment>> bandCountAttachments_;
     juce::Label titleLabel_;
     juce::Label languageLabel_;
+    int currentPage_ = 0;
+    juce::TextButton pageButtons_[numPages];
     // ponytail: EQ APO deletes the editor on a non-message thread; a ComboBox
     // popup open at that instant crashes in DropShadower. Accepted — same risk
     // class as fileChooser_ below. If it ever bites, swap for an in-editor

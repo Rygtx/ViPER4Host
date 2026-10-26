@@ -4,7 +4,8 @@ param(
   [string]$ProcessName = "ViPER4Host",
   [string]$OutFile = "ui.png",
   [string]$Resize = "",  # e.g. "1400x1900" physical pixels, applied before capture
-  [int]$ScrollDown = 0   # mouse-wheel clicks to send over the window before capture
+  [int]$ScrollDown = 0,  # mouse-wheel clicks to send over the window before capture
+  [string]$Click = ""    # "x,y" or "x1,y1;x2,y2" window-relative physical px, clicked before capture
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -20,7 +21,9 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, int data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, UIntPtr wp, IntPtr lp);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
   public struct RECT { public int Left, Top, Right, Bottom; }
+  public struct POINT { public int X; public int Y; }
 }
 "@
 [Win]::SetProcessDPIAware() | Out-Null
@@ -59,6 +62,30 @@ if ($ScrollDown -gt 0) {
     Start-Sleep -Milliseconds 60
   }
   Start-Sleep -Milliseconds 800
+}
+if ($Click -ne "") {
+  # Post clicks straight to the window (safe for a background/occluded window —
+  # real input injection would hit whatever is on top). Caveat: JUCE ignores
+  # synthetic clicks while the window is not foreground; bring it to front or
+  # click manually if shots don't reflect the clicks.
+  # Coords are window-relative physical px, i.e. the same space as the capture.
+  $origin = New-Object Win+POINT
+  [Win]::ClientToScreen($h, [ref]$origin) | Out-Null
+  $offX = $r.Left - $origin.X
+  $offY = $r.Top - $origin.Y
+  foreach ($pt in $Click.Split(';')) {
+    if ($pt -notmatch '^(\d+),(\d+)$') { Write-Error "bad -Click point '$pt'"; exit 1 }
+    $cx = [int]$Matches[1] + $offX
+    $cy = [int]$Matches[2] + $offY
+    $lp = [IntPtr](($cy -shl 16) -bor ($cx -band 0xFFFF))
+    [Win]::PostMessage($h, 0x0200, [UIntPtr]::Zero, $lp) | Out-Null  # move
+    Start-Sleep -Milliseconds 150
+    [Win]::PostMessage($h, 0x0201, [UIntPtr][uint64]1, $lp) | Out-Null  # down
+    Start-Sleep -Milliseconds 100
+    [Win]::PostMessage($h, 0x0202, [UIntPtr]::Zero, $lp) | Out-Null  # up
+    Start-Sleep -Milliseconds 500
+  }
+  Start-Sleep -Milliseconds 500
 }
 if ($w -le 0 -or $ht -le 0) { Write-Error "bad window rect"; exit 1 }
 

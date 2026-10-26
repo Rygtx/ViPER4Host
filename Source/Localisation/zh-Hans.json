@@ -5,6 +5,13 @@
     "pluginTitle": "ViPER4Host",
     "uiLanguage": "界面语言",
 
+    "tabOutput": "输出音量",
+    "tabDynamics": "动态压缩",
+    "tabEq": "均衡器",
+    "tabBass": "低音",
+    "tabStage": "声场环绕",
+    "tabFx": "音效",
+
     "groupMaster": "主输出",
     "limiterThreshold": "限幅阈值",
     "limiterVolume": "输出音量",
