@@ -1,5 +1,5 @@
-[submodule "ViPERDSP"]
-	path = ViPERDSP
+[submodule "extern/ViPERDSP"]
+	path = extern/ViPERDSP
 	url = https://github.com/likelikeslike/ViPERDSP.git
 [submodule "extern/FST"]
 	path = extern/FST

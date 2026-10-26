@@ -5,7 +5,7 @@ project(ViPER4Host VERSION ${VIPER4HOST_PLUGIN_VERSION} LANGUAGES C CXX RC)
 
 set(JUCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/JUCE" CACHE PATH "Path to the JUCE repository")
 set(FST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/FST" CACHE PATH "Path to the FST repository")
-set(VIPERDSP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ViPERDSP" CACHE PATH "Path to the ViPERDSP engine")
+set(VIPERDSP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern/ViPERDSP" CACHE PATH "Path to the ViPERDSP engine")
 
 if(NOT EXISTS "${JUCE_DIR}/CMakeLists.txt")
   message(FATAL_ERROR "JUCE not found at ${JUCE_DIR}. Run 'git submodule update --init --recursive' first.")
