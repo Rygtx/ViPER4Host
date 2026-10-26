@@ -30,11 +30,19 @@ private:
         juce::String groupId;
         juce::GroupComponent group;
         std::vector<std::unique_ptr<ParamRow>> rows;
+        // File-loading row (convolver / DDC groups only).
+        juce::Label fileLabel;
+        juce::TextButton fileButton;
+        juce::Label fileStatus;
+        juce::String fileKind; // APVTS state property holding the path
+        bool hasFileRow = false;
     };
 
-    void addGroup(const juce::String& groupId, std::initializer_list<const char*> paramIds);
+    void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
     void relabelAll(const juce::String& languageCode);
     void selectLanguage(int index);
+    void pickFile(ParamGroup& group);
+    void refreshFileStatus(ParamGroup& group);
 
     ViPER4HostAudioProcessor& processor_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
@@ -46,6 +54,7 @@ private:
     std::vector<std::unique_ptr<juce::ToggleButton>> languageButtons_;
     juce::Viewport viewport_;
     juce::Component content_;
+    std::unique_ptr<juce::FileChooser> fileChooser_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ViPER4HostAudioProcessorEditor)
 };

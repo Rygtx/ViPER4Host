@@ -53,15 +53,15 @@ juce::String tr(const juce::String& languageCode, const juce::String& key)
 
 juce::String choiceText(const juce::String& paramId, int index, const juce::String& languageCode)
 {
-    if (paramId == "bassMode")
-        return tr(languageCode, "bassMode" + juce::String(index));
-    if (paramId == "clarityMode")
-        return tr(languageCode, "clarityMode" + juce::String(index));
-    if (paramId == "vheQuality")
-        return tr(languageCode, "vheLevel" + juce::String(index + 1));
-    if (paramId == "curePreset")
-        return tr(languageCode, "curePreset" + juce::String(index + 1));
-    return {};
+    // Key convention: <paramId><index>. Per-band dynamic-EQ filter types share
+    // one key set (de1Type, de2Type, ... all map to deType<index>). Returns
+    // empty when untranslated (tr() falls back to the key) so callers can use
+    // the raw choice string.
+    const juce::String key = paramId.endsWith("Type")
+        ? "deType" + juce::String(index)
+        : paramId + juce::String(index);
+    const auto text = tr(languageCode, key);
+    return text == key ? juce::String() : text;
 }
 
 juce::String normaliseLanguageCode(const juce::String& code)

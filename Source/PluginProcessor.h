@@ -3,6 +3,7 @@
 #include <viper/ViPER.h>
 
 #include <JuceHeader.h>
+#include <mutex>
 
 class ViPER4HostAudioProcessor final : public juce::AudioProcessor
 {
@@ -37,16 +38,40 @@ public:
     juce::String getUiLanguage() const;
     void setUiLanguage(const juce::String& languageCode);
 
+    // File-based effects. These parse on the calling (message) thread and hand
+    // the result to the audio thread via an atomic slot; returns an empty
+    // string on success, else a localised error message key suffix.
+    juce::String loadConvolverFile(const juce::String& path);
+    juce::String loadDdcFile(const juce::String& path);
+
     static constexpr const char* pluginDisplayName = "ViPER4Host";
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void buildEngineParams(viper::ViPERParams& params) const;
 
+    struct PendingKernel
+    {
+        std::vector<float> samples;
+        uint32_t frames = 0, channels = 0;
+    };
+    struct PendingDdc
+    {
+        std::vector<viper::BiquadSection> sections44100, sections48000;
+    };
+
     juce::AudioProcessorValueTreeState parameters_;
     ViPER engine_;
     viper::ViPERParams lastAppliedParams_{};
     std::vector<float> interleaved_;
+    juce::AudioFormatManager formatManager_;
+    // File payloads staged by the message thread, applied on the audio thread
+    // (the engine mutates buffers the audio thread reads). C++17 has no
+    // atomic<shared_ptr>; the audio thread try_locks and skips a block if the
+    // slot is busy for the microsecond the handoff takes.
+    std::mutex pendingMutex_;
+    std::shared_ptr<PendingKernel> pendingKernel_;
+    std::shared_ptr<PendingDdc> pendingDdc_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ViPER4HostAudioProcessor)
 };
