@@ -44,11 +44,16 @@ private:
         // interactive).
         juce::String enableParamId;
         std::unique_ptr<juce::ParameterAttachment> enableAttachment;
+        // Band-count dependent groups (EQ/DynEQ/MBC bands) can be fully hidden.
+        bool visible = true;
 
         void setControlsEnabled(bool enabled);
     };
 
     void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
+    // Hides rows/groups beyond the active band counts (eqBandCount, deBandCount,
+    // mbcBandCount), then relayouts.
+    void updateBandVisibility();
     void fillCombo(juce::ComboBox& combo, const juce::String& paramId,
         const juce::StringArray& choices, const juce::String& languageCode);
     void relabelAll(const juce::String& languageCode);
@@ -59,6 +64,8 @@ private:
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
+    // Follow eqBandCount / deBandCount / mbcBandCount to show/hide band rows.
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> bandCountAttachments_;
     juce::Label titleLabel_;
     juce::Label languageLabel_;
     // ponytail: EQ APO deletes the editor on a non-message thread; a ComboBox

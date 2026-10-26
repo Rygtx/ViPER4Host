@@ -85,6 +85,15 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
             pfx + "MaxAttack", pfx + "MaxRelease", pfx + "Crest", pfx + "Adapt", pfx + "NoClip" });
     }
 
+    // Band-count params drive which band rows/groups are shown.
+    for (const char* id : { "eqBandCount", "deBandCount", "mbcBandCount" })
+    {
+        bandCountAttachments_.push_back(std::make_unique<juce::ParameterAttachment>(
+            *processor_.getParametersState().getParameter(id),
+            [this](float) { updateBandVisibility(); }, nullptr));
+        bandCountAttachments_.back()->sendInitialUpdate();
+    }
+
     titleLabel_.setFont(juce::Font(juce::FontOptions(16.0f, juce::Font::bold)));
     titleLabel_.setJustificationType(juce::Justification::centredLeft);
     languageLabel_.setJustificationType(juce::Justification::centredRight);
@@ -210,6 +219,54 @@ void ViPER4HostAudioProcessorEditor::ParamGroup::setControlsEnabled(bool enabled
     }
 }
 
+void ViPER4HostAudioProcessorEditor::updateBandVisibility()
+{
+    auto& apvts = processor_.getParametersState();
+    const auto bandCount = [&apvts](const char* id) -> int {
+        auto* param = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(id));
+        jassert(param != nullptr);
+        return param != nullptr ? param->getIndex() : 0;
+    };
+    constexpr int eqCounts[] = { 10, 15, 25, 31 };
+    const int eqN = eqCounts[bandCount("eqBandCount")];
+    const int deN = bandCount("deBandCount") + 1;
+    const int mbcN = bandCount("mbcBandCount") + 1;
+
+    const auto setRowVisible = [](ParamRow& row, bool on) {
+        row.label.setVisible(on);
+        row.slider.setVisible(on);
+        row.combo.setVisible(on);
+        row.toggle.setVisible(on);
+    };
+
+    for (auto& pg : groups_)
+    {
+        const auto& gid = pg->groupId;
+        if (gid == "groupEq")
+        {
+            for (auto& row : pg->rows)
+                setRowVisible(*row, row->paramId.fromFirstOccurrenceOf("eqBand", false, false).getIntValue() <= eqN);
+        }
+        else if (gid == "groupMbc")
+        {
+            // N bands need N-1 crossovers.
+            for (auto& row : pg->rows)
+                if (row->paramId.startsWith("mbcCross"))
+                    setRowVisible(*row, row->paramId.fromFirstOccurrenceOf("mbcCross", false, false).getIntValue() < mbcN);
+        }
+        else if (gid.startsWith("groupDeB") || gid.startsWith("groupMbcB"))
+        {
+            const auto tag = gid.startsWith("groupDeB") ? "groupDeB" : "groupMbcB";
+            const int band = gid.fromFirstOccurrenceOf(tag, false, false).getIntValue();
+            pg->visible = band <= (gid.startsWith("groupDeB") ? deN : mbcN);
+            pg->group.setVisible(pg->visible);
+            for (auto& row : pg->rows)
+                setRowVisible(*row, pg->visible);
+        }
+    }
+    resized();
+}
+
 void ViPER4HostAudioProcessorEditor::fillCombo(
     juce::ComboBox& combo, const juce::String& paramId,
     const juce::StringArray& choices, const juce::String& languageCode)
@@ -305,15 +362,23 @@ void ViPER4HostAudioProcessorEditor::resized()
     int columnBottoms[2] = { gap, gap };
     for (auto& pg : groups_)
     {
+        if (!pg->visible)
+            continue;
+        int rowCount = 0;
+        for (auto& row : pg->rows)
+            if (row->label.isVisible())
+                ++rowCount;
         const int fileRowHeight = pg->hasFileRow ? rowHeight : 0;
-        const int height = titleHeight + static_cast<int>(pg->rows.size()) * rowHeight + fileRowHeight;
+        const int height = titleHeight + rowCount * rowHeight + fileRowHeight;
         const int column = columnBottoms[0] <= columnBottoms[1] ? 0 : 1;
         const int x = column == 0 ? gap : gap + columnWidth + gap;
 
         pg->group.setBounds(x, columnBottoms[column], columnWidth, height);
-        auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, static_cast<int>(pg->rows.size()) * rowHeight + fileRowHeight);
+        auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
         for (auto& row : pg->rows)
         {
+            if (!row->label.isVisible())
+                continue;
             auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
             row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
             if (row->buttonAttachment != nullptr)
@@ -327,7 +392,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         {
             // File row is a child of pg->group: bounds are group-relative,
             // unlike the param rows which live in content_ coordinates.
-            auto fileBounds = juce::Rectangle<int>(8, titleHeight + static_cast<int>(pg->rows.size()) * rowHeight,
+            auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
                 columnWidth - 16, rowHeight).reduced(4, 1);
             pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
             pg->fileButton.setBounds(fileBounds.removeFromLeft(90).withSizeKeepingCentre(86, 24));
