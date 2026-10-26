@@ -22,6 +22,9 @@ private:
     struct ParamRow
     {
         juce::String paramId;
+        // Group's "*Enable" switch: lives in the group title bar instead of a
+        // labelled row (the switch itself is the enable control).
+        bool isEnable = false;
         // Band-count rule (EQ/DEQ/MBC); actual visibility is applied in
         // resized() as bandVisible && !group collapsed.
         bool bandVisible = true;
@@ -45,22 +48,22 @@ private:
         juce::Label fileStatus;
         juce::String fileKind; // APVTS state property holding the path
         bool hasFileRow = false;
-        // First "*Enable" param of the group, if any: dims and disables the
-        // other rows while the effect is off (the enable control itself stays
-        // interactive).
+        // First "*Enable" param of the group, if any: the switch doubles as
+        // the fold control (off = title bar only) and refreshCollapse() runs
+        // whenever it changes.
         juce::String enableParamId;
         std::unique_ptr<juce::ParameterAttachment> enableAttachment;
         // Band-count dependent groups (EQ/DynEQ/MBC bands) can be fully hidden.
         bool visible = true;
         // Category tab this group lives on, plus its fold state. A folded
-        // group shows only its title bar; the button lives in that bar.
+        // group shows only its title bar; the enable switch sits in that bar.
         int page = 0;
         bool collapsed = false;
-        juce::TextButton collapseButton;
-
-        void setControlsEnabled(bool enabled);
     };
 
+    // Re-derives every group's collapsed state from its enable switch (band
+    // sub-groups also follow their parent feature switch), then relayouts.
+    void refreshCollapse();
     void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
     // Hides rows/groups beyond the active band counts (eqBandCount, deBandCount,
     // mbcBandCount), then relayouts.

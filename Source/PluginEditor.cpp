@@ -180,15 +180,19 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
 
         auto row = std::make_unique<ParamRow>();
         row->paramId = id;
+        row->isEnable = id.endsWith("Enable");
 
         if (dynamic_cast<juce::AudioParameterBool*>(param) != nullptr)
         {
             row->buttonAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, id, row->toggle);
-            content_.addAndMakeVisible(row->toggle);
+            if (row->isEnable)
+                pg->group.addAndMakeVisible(row->toggle); // switch in the title bar
+            else
+                content_.addAndMakeVisible(row->toggle);
         }
         else if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param))
         {
-            row->label.setJustificationType(juce::Justification::centredRight);
+            row->label.setJustificationType(juce::Justification::centredLeft);
             fillCombo(row->combo, id, choiceParam->choices,
                 v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage()));
             row->comboAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(apvts, id, row->combo);
@@ -198,16 +202,17 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
         {
             row->slider.setSliderStyle(juce::Slider::LinearHorizontal);
             row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, 22);
-            row->label.setJustificationType(juce::Justification::centredRight);
+            row->label.setJustificationType(juce::Justification::centredLeft);
             row->sliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, id, row->slider);
             content_.addAndMakeVisible(row->slider);
         }
 
-        content_.addAndMakeVisible(row->label);
+        if (!row->isEnable)
+            content_.addAndMakeVisible(row->label);
         pg->rows.push_back(std::move(row));
     }
 
-    // Wire the group's enable switch (if it has one) to dim/disable the rest.
+    // The group's enable switch (if it has one) doubles as the fold control.
     const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
         [](const juce::String& id) { return id.endsWith("Enable"); });
     if (enableIt != paramIds.end())
@@ -215,7 +220,7 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
         pg->enableParamId = *enableIt;
         pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
             *apvts.getParameter(pg->enableParamId),
-            [raw = pg.get()](float value) { raw->setControlsEnabled(value > 0.5f); },
+            [this](float) { refreshCollapse(); },
             nullptr);
         pg->enableAttachment->sendInitialUpdate();
     }
@@ -231,37 +236,36 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
     }
 
     pg->page = pageOf(groupId);
-    // Band sub-groups start folded; everything else starts open.
-    pg->collapsed = groupId.startsWith("groupDeB") || groupId.startsWith("groupMbcB");
-    pg->collapseButton.setButtonText(pg->collapsed ? "+" : "-");
-    pg->collapseButton.onClick = [this, raw = pg.get()] {
-        raw->collapsed = !raw->collapsed;
-        raw->collapseButton.setButtonText(raw->collapsed ? "+" : "-");
-        resized();
-    };
-    pg->group.addAndMakeVisible(pg->collapseButton);
+    // Fold state comes from the enable switches (refreshCollapse); groups
+    // without one (groupMaster, DE bands) default to open.
 
     content_.addAndMakeVisible(pg->group);
     pg->group.toBack();
     groups_.push_back(std::move(pg));
 }
 
-void ViPER4HostAudioProcessorEditor::ParamGroup::setControlsEnabled(bool enabled)
+// A folded group is just its title bar; the enable switch in that bar is the
+// only control. Band sub-groups additionally follow their parent feature
+// switch, so e.g. switching DynEQ off folds every DE band too.
+void ViPER4HostAudioProcessorEditor::refreshCollapse()
 {
-    const float alpha = enabled ? 1.0f : 0.35f;
-    for (auto& row : rows)
+    auto& apvts = processor_.getParametersState();
+    const auto isOn = [&apvts](const juce::String& id) {
+        auto* param = apvts.getParameter(id);
+        return param != nullptr && param->getValue() > 0.5f;
+    };
+    for (auto& pg : groups_)
     {
-        if (row->paramId == enableParamId)
-            continue;
-        row->label.setEnabled(enabled);
-        row->label.setAlpha(alpha);
-        row->slider.setEnabled(enabled);
-        row->slider.setAlpha(alpha);
-        row->combo.setEnabled(enabled);
-        row->combo.setAlpha(alpha);
-        row->toggle.setEnabled(enabled);
-        row->toggle.setAlpha(alpha);
+        bool expanded = true;
+        if (pg->enableParamId.isNotEmpty())
+            expanded = isOn(pg->enableParamId);
+        if (pg->groupId.startsWith("groupDeB"))
+            expanded = expanded && isOn("deEnable");
+        else if (pg->groupId.startsWith("groupMbcB"))
+            expanded = expanded && isOn("mbcEnable");
+        pg->collapsed = !expanded;
     }
+    resized();
 }
 
 void ViPER4HostAudioProcessorEditor::updateBandVisibility()
@@ -365,6 +369,8 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
         pg->group.setText(tr(lang, pg->groupId));
         for (auto& row : pg->rows)
         {
+            if (row->isEnable) // switch in the title bar, no label
+                continue;
             row->label.setText(tr(lang, labelKey(row->paramId)), juce::dontSendNotification);
             if (row->comboAttachment != nullptr)
                 if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(
@@ -401,12 +407,11 @@ void ViPER4HostAudioProcessorEditor::resized()
 
     viewport_.setBounds(body.reduced(gap));
 
-    // Two-column layout inside the viewport content; each column stacks
-    // independently so groups never leave holes when heights differ.
-    // Content fills the viewport width (min 560, below that scroll sideways).
-    // Only groups on the current page are laid out.
+    // Single column: each group spans the full content width. Content fills
+    // the viewport width (min 560, below that scroll sideways). Only groups
+    // on the current page are laid out.
     const int contentWidth = juce::jmax(560, viewport_.getMaximumVisibleWidth());
-    const int columnWidth = (contentWidth - gap * 3) / 2;
+    const int columnWidth = contentWidth - gap * 2;
 
     const auto applyVis = [](ParamRow& row, bool on) {
         row.label.setVisible(on);
@@ -415,21 +420,27 @@ void ViPER4HostAudioProcessorEditor::resized()
         row.toggle.setVisible(on);
     };
 
-    int columnBottoms[2] = { gap, gap };
+    int y = gap;
     for (auto& pg : groups_)
     {
         const bool show = pg->visible && pg->page == currentPage_;
         pg->group.setVisible(show);
         if (!show)
         {
+            // Rows are content_ children, so hide them explicitly. The enable
+            // switch is a group child — group visibility already covers it,
+            // and touching it here would leave it hidden when we come back.
             for (auto& row : pg->rows)
-                applyVis(*row, false);
+                if (!row->isEnable)
+                    applyVis(*row, false);
             continue;
         }
 
         int rowCount = 0;
         for (auto& row : pg->rows)
         {
+            if (row->isEnable) // switch lives in the title bar, not the grid
+                continue;
             const bool on = row->bandVisible && !pg->collapsed;
             applyVis(*row, on);
             if (on)
@@ -439,15 +450,15 @@ void ViPER4HostAudioProcessorEditor::resized()
         const bool collapsed = pg->collapsed;
         const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
         const int height = titleHeight + (collapsed ? 0 : rowCount * rowHeight + fileRowHeight);
-        const int column = columnBottoms[0] <= columnBottoms[1] ? 0 : 1;
-        const int x = column == 0 ? gap : gap + columnWidth + gap;
 
-        pg->group.setBounds(x, columnBottoms[column], columnWidth, height);
-        pg->collapseButton.setBounds(juce::Rectangle<int>(columnWidth - 30, 2, 24, 20));
+        pg->group.setBounds(gap, y, columnWidth, height);
+        for (auto& row : pg->rows)
+            if (row->isEnable)
+                row->toggle.setBounds(juce::Rectangle<int>(columnWidth - 48, 2, 40, 20));
 
         if (!collapsed)
         {
-            auto rowsArea = juce::Rectangle<int>(x + 8, columnBottoms[column] + titleHeight, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
             for (auto& row : pg->rows)
             {
                 if (!row->label.isVisible())
@@ -473,10 +484,10 @@ void ViPER4HostAudioProcessorEditor::resized()
             }
         }
 
-        columnBottoms[column] += height + gap;
+        y += height + gap;
     }
 
-    content_.setSize(contentWidth, juce::jmax(columnBottoms[0], columnBottoms[1]) + gap);
+    content_.setSize(contentWidth, y + gap);
 }
 
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)

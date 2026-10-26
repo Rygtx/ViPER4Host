@@ -18,19 +18,16 @@
     "limiterPan": "左右平衡",
 
     "groupAGC": "自动音量补偿",
-    "pgcEnable": "启用自动音量补偿",
     "pgcStrength": "补偿强度",
     "pgcMaxGain": "最大补偿",
     "pgcOutputThreshold": "输出阈值",
 
     "groupLufs": "响度目标 (LUFS)",
-    "lufsEnable": "启用响度目标",
     "lufsTarget": "目标响度",
     "lufsMaxGain": "最大增益",
     "lufsSpeed": "调整速度",
 
     "groupFet": "FET 压缩器",
-    "fetEnable": "启用 FET 压缩器",
     "fetThreshold": "阈值",
     "fetRatio": "压缩比",
     "fetKnee": "拐点宽度",
@@ -49,7 +46,6 @@
     "fetNoClip": "防削波",
 
     "groupEq": "图形均衡器",
-    "eqEnable": "启用均衡器",
     "eqBandCount": "段数",
     "eqBand1": "20 Hz", "eqBand2": "25 Hz", "eqBand3": "31 Hz", "eqBand4": "40 Hz",
     "eqBand5": "50 Hz", "eqBand6": "63 Hz", "eqBand7": "80 Hz", "eqBand8": "100 Hz",
@@ -61,7 +57,6 @@
     "eqBand29": "12.5 kHz", "eqBand30": "16 kHz", "eqBand31": "20 kHz",
 
     "groupDe": "动态均衡器",
-    "deEnable": "启用动态均衡器",
     "deBandCount": "段数",
     "groupDeB1": "动态EQ 第1段", "groupDeB2": "动态EQ 第2段", "groupDeB3": "动态EQ 第3段",
     "groupDeB4": "动态EQ 第4段", "groupDeB5": "动态EQ 第5段", "groupDeB6": "动态EQ 第6段",
@@ -77,14 +72,12 @@
     "deType0": "峰值", "deType1": "低频搁架", "deType2": "高频搁架",
 
     "groupPsyBass": "心理声学低音",
-    "pBassEnable": "启用心理声学低音",
     "pBassCutoff": "截止频率",
     "pBassIntensity": "强度",
     "pBassHarmonicOrder": "谐波阶数",
     "pBassOriginalLevel": "原始电平",
 
     "groupBass": "ViPER 低音增强",
-    "bassEnable": "启用低音增强",
     "bassMode": "低音模式",
     "bassMode0": "自然",
     "bassMode1": "纯低音",
@@ -94,7 +87,6 @@
     "bassAntiPop": "防爆音",
 
     "groupBassMono": "低音单声道",
-    "bassMonoEnable": "启用低音单声道",
     "bassMonoMode": "单声道模式",
     "bassMonoMode0": "自然",
     "bassMonoMode1": "纯低音",
@@ -104,34 +96,28 @@
     "bassMonoAntiPop": "防爆音",
 
     "groupSpecExt": "频谱延展",
-    "specExtEnable": "启用频谱延展",
     "specExtStrength": "参考频率",
     "specExtExciter": "激励强度",
 
     "groupConv": "卷积器",
-    "convEnable": "启用卷积器",
     "convCrossChannel": "串扰混合",
     "convFile": "脉冲响应文件",
 
     "groupDdc": "数字耳机校正 (DDC)",
-    "ddcEnable": "启用 DDC",
     "ddcFile": "校正系数文件",
 
     "groupField": "环绕扩展",
-    "fieldEnable": "启用环绕扩展",
     "fieldWidening": "扩展强度",
     "fieldMidImage": "中置成像",
     "fieldDepth": "纵深",
 
     "groupDiff": "差分环绕",
-    "diffEnable": "启用差分环绕",
     "diffDelay": "延迟",
     "diffReverse": "左右反转",
     "diffMix": "湿干混合",
     "diffLpCutoff": "低通截止",
 
     "groupSi": "立体声声像",
-    "siEnable": "启用立体声声像",
     "siLowWidth": "低频宽度",
     "siMidWidth": "中频宽度",
     "siHighWidth": "高频宽度",
@@ -139,13 +125,11 @@
     "siHighCrossover": "高频分频点",
 
     "groupVHE": "耳机环绕＋",
-    "vheEnable": "启用耳机环绕",
     "vheQuality": "环绕级别",
     "vheQuality0": "级别 1", "vheQuality1": "级别 2", "vheQuality2": "级别 3",
     "vheQuality3": "级别 4", "vheQuality4": "级别 5",
 
     "groupReverb": "混响",
-    "reverbEnable": "启用混响",
     "reverbRoomSize": "房间大小",
     "reverbWidth": "声场宽度",
     "reverbDamp": "高频阻尼",
@@ -153,7 +137,6 @@
     "reverbDry": "干声",
 
     "groupDs": "动态系统",
-    "dsEnable": "启用动态系统",
     "dsXLow": "低频基准 (X1)",
     "dsXHigh": "高频基准 (X2)",
     "dsYLow": "低频目标 (Y1)",
@@ -163,7 +146,6 @@
     "dsStrength": "强度",
 
     "groupClarity": "清晰度",
-    "clarityEnable": "启用清晰度",
     "clarityMode": "清晰度模式",
     "clarityMode0": "自然",
     "clarityMode1": "OZone",
@@ -171,34 +153,28 @@
     "clarityGain": "清晰度增益",
 
     "groupCure": "听觉保护",
-    "cureEnable": "启用听觉保护",
     "curePreset": "交叉混音预设",
     "curePreset0": "预设 1",
     "curePreset1": "预设 2",
     "curePreset2": "预设 3",
 
     "groupTube": "电子管模拟",
-    "tubeEnable": "启用电子管模拟",
     "tubeModel": "电子管型号",
     "tubeDrive": "驱动量",
     "tubeMix": "混合比例",
 
     "groupAx": "AnalogX 模拟音染",
-    "axEnable": "启用 AnalogX",
     "axMode": "音染程度",
     "axMode0": "轻度", "axMode1": "中度", "axMode2": "重度",
 
     "groupSpk": "音箱校正",
-    "spkEnable": "启用音箱校正",
 
     "groupMbc": "多段压缩器",
-    "mbcEnable": "启用多段压缩器",
     "mbcBandCount": "段数",
     "mbcCross1": "分频点 1", "mbcCross2": "分频点 2",
     "mbcCross3": "分频点 3", "mbcCross4": "分频点 4",
     "groupMbcB1": "多段压缩 第1段", "groupMbcB2": "多段压缩 第2段", "groupMbcB3": "多段压缩 第3段",
     "groupMbcB4": "多段压缩 第4段", "groupMbcB5": "多段压缩 第5段",
-    "mbcBandEnable": "启用本段",
     "mbcBandThreshold": "阈值",
     "mbcBandRatio": "压缩比",
     "mbcBandKnee": "拐点宽度",

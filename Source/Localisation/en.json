@@ -18,19 +18,16 @@
     "limiterPan": "Channel Pan",
 
     "groupAGC": "AGC",
-    "pgcEnable": "AGC Enable",
     "pgcStrength": "AGC Strength",
     "pgcMaxGain": "AGC Max Gain",
     "pgcOutputThreshold": "AGC Output Threshold",
 
     "groupLufs": "Loudness (LUFS)",
-    "lufsEnable": "LUFS Enable",
     "lufsTarget": "Target Loudness",
     "lufsMaxGain": "Max Gain",
     "lufsSpeed": "Adjust Speed",
 
     "groupFet": "FET Compressor",
-    "fetEnable": "FET Enable",
     "fetThreshold": "Threshold",
     "fetRatio": "Ratio",
     "fetKnee": "Knee Width",
@@ -49,7 +46,6 @@
     "fetNoClip": "No Clip",
 
     "groupEq": "Graphic Equalizer",
-    "eqEnable": "EQ Enable",
     "eqBandCount": "Bands",
     "eqBand1": "20 Hz", "eqBand2": "25 Hz", "eqBand3": "31 Hz", "eqBand4": "40 Hz",
     "eqBand5": "50 Hz", "eqBand6": "63 Hz", "eqBand7": "80 Hz", "eqBand8": "100 Hz",
@@ -61,7 +57,6 @@
     "eqBand29": "12.5 kHz", "eqBand30": "16 kHz", "eqBand31": "20 kHz",
 
     "groupDe": "Dynamic EQ",
-    "deEnable": "DynEQ Enable",
     "deBandCount": "Bands",
     "groupDeB1": "DynEQ Band 1", "groupDeB2": "DynEQ Band 2", "groupDeB3": "DynEQ Band 3",
     "groupDeB4": "DynEQ Band 4", "groupDeB5": "DynEQ Band 5", "groupDeB6": "DynEQ Band 6",
@@ -77,14 +72,12 @@
     "deType0": "Peak", "deType1": "Low Shelf", "deType2": "High Shelf",
 
     "groupPsyBass": "Psychoacoustic Bass",
-    "pBassEnable": "Psychoacoustic Bass Enable",
     "pBassCutoff": "Cutoff Frequency",
     "pBassIntensity": "Intensity",
     "pBassHarmonicOrder": "Harmonic Order",
     "pBassOriginalLevel": "Original Level",
 
     "groupBass": "ViPER Bass",
-    "bassEnable": "Bass Enable",
     "bassMode": "Bass Mode",
     "bassMode0": "Natural",
     "bassMode1": "Pure Bass+",
@@ -94,7 +87,6 @@
     "bassAntiPop": "Anti-Pop",
 
     "groupBassMono": "Bass Mono",
-    "bassMonoEnable": "Bass Mono Enable",
     "bassMonoMode": "Bass Mono Mode",
     "bassMonoMode0": "Natural",
     "bassMonoMode1": "Pure Bass+",
@@ -104,34 +96,28 @@
     "bassMonoAntiPop": "Anti-Pop",
 
     "groupSpecExt": "Spectrum Extension",
-    "specExtEnable": "Spectrum Extension Enable",
     "specExtStrength": "Reference Frequency",
     "specExtExciter": "Exciter",
 
     "groupConv": "Convolver",
-    "convEnable": "Convolver Enable",
     "convCrossChannel": "Cross Channel",
     "convFile": "Impulse Response",
 
     "groupDdc": "Digital Headphone Correction (DDC)",
-    "ddcEnable": "DDC Enable",
     "ddcFile": "Correction File",
 
     "groupField": "Field Surround",
-    "fieldEnable": "Field Surround Enable",
     "fieldWidening": "Field Widening",
     "fieldMidImage": "Field Mid Image",
     "fieldDepth": "Field Depth",
 
     "groupDiff": "Differential Surround",
-    "diffEnable": "Diff Surround Enable",
     "diffDelay": "Delay",
     "diffReverse": "Reverse Channels",
     "diffMix": "Wet/Dry Mix",
     "diffLpCutoff": "LP Cutoff",
 
     "groupSi": "Stereo Imager",
-    "siEnable": "Stereo Imager Enable",
     "siLowWidth": "Low Width",
     "siMidWidth": "Mid Width",
     "siHighWidth": "High Width",
@@ -139,13 +125,11 @@
     "siHighCrossover": "High Crossover",
 
     "groupVHE": "Headphone Surround+",
-    "vheEnable": "VHE Enable",
     "vheQuality": "VHE Level",
     "vheQuality0": "Level 1", "vheQuality1": "Level 2", "vheQuality2": "Level 3",
     "vheQuality3": "Level 4", "vheQuality4": "Level 5",
 
     "groupReverb": "Reverberation",
-    "reverbEnable": "Reverb Enable",
     "reverbRoomSize": "Reverb Room Size",
     "reverbWidth": "Reverb Width",
     "reverbDamp": "Reverb Damp",
@@ -153,7 +137,6 @@
     "reverbDry": "Reverb Dry",
 
     "groupDs": "Dynamic System",
-    "dsEnable": "Dynamic System Enable",
     "dsXLow": "Low Reference (X1)",
     "dsXHigh": "High Reference (X2)",
     "dsYLow": "Low Target (Y1)",
@@ -163,7 +146,6 @@
     "dsStrength": "Strength",
 
     "groupClarity": "Clarity",
-    "clarityEnable": "Clarity Enable",
     "clarityMode": "Clarity Mode",
     "clarityMode0": "Natural",
     "clarityMode1": "OZone",
@@ -171,34 +153,28 @@
     "clarityGain": "Clarity Gain",
 
     "groupCure": "Cure",
-    "cureEnable": "Cure Enable",
     "curePreset": "Crossfeed Preset",
     "curePreset0": "Preset 1",
     "curePreset1": "Preset 2",
     "curePreset2": "Preset 3",
 
     "groupTube": "Tube",
-    "tubeEnable": "Tube Enable",
     "tubeModel": "Tube Model",
     "tubeDrive": "Tube Drive",
     "tubeMix": "Tube Mix",
 
     "groupAx": "AnalogX",
-    "axEnable": "AnalogX Enable",
     "axMode": "Saturation",
     "axMode0": "Light", "axMode1": "Medium", "axMode2": "Heavy",
 
     "groupSpk": "Speaker Correction",
-    "spkEnable": "Speaker Correction Enable",
 
     "groupMbc": "Multiband Compressor",
-    "mbcEnable": "MBC Enable",
     "mbcBandCount": "Bands",
     "mbcCross1": "Crossover 1", "mbcCross2": "Crossover 2",
     "mbcCross3": "Crossover 3", "mbcCross4": "Crossover 4",
     "groupMbcB1": "MBC Band 1", "groupMbcB2": "MBC Band 2", "groupMbcB3": "MBC Band 3",
     "groupMbcB4": "MBC Band 4", "groupMbcB5": "MBC Band 5",
-    "mbcBandEnable": "Band Enable",
     "mbcBandThreshold": "Threshold",
     "mbcBandRatio": "Ratio",
     "mbcBandKnee": "Knee Width",
