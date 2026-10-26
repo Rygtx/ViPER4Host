@@ -150,13 +150,19 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
             row->buttonAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, id, row->toggle);
             content_.addAndMakeVisible(row->toggle);
         }
+        else if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param))
+        {
+            row->label.setJustificationType(juce::Justification::centredRight);
+            fillCombo(row->combo, id, choiceParam->choices,
+                v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage()));
+            row->comboAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(apvts, id, row->combo);
+            content_.addAndMakeVisible(row->combo);
+        }
         else
         {
             row->slider.setSliderStyle(juce::Slider::LinearHorizontal);
             row->slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, rowHeight);
             row->label.setJustificationType(juce::Justification::centredRight);
-            if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(param))
-                row->slider.setRange(0.0, static_cast<double>(choiceParam->choices.size() - 1), 1.0);
             row->sliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, id, row->slider);
             content_.addAndMakeVisible(row->slider);
         }
@@ -177,6 +183,20 @@ void ViPER4HostAudioProcessorEditor::addGroup(const juce::String& groupId, std::
 
     content_.addAndMakeVisible(pg->group);
     groups_.push_back(std::move(pg));
+}
+
+void ViPER4HostAudioProcessorEditor::fillCombo(
+    juce::ComboBox& combo, const juce::String& paramId,
+    const juce::StringArray& choices, const juce::String& languageCode)
+{
+    const int selected = combo.getSelectedItemIndex();
+    combo.clear(juce::dontSendNotification);
+    for (int i = 0; i < choices.size(); ++i)
+    {
+        auto text = v4h::localisation::choiceText(paramId, i, languageCode);
+        combo.addItem(text.isNotEmpty() ? text : choices[static_cast<size_t>(i)], i + 1);
+    }
+    combo.setSelectedItemIndex(selected, juce::dontSendNotification);
 }
 
 void ViPER4HostAudioProcessorEditor::pickFile(ParamGroup& group)
@@ -225,18 +245,10 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
         for (auto& row : pg->rows)
         {
             row->label.setText(tr(lang, labelKey(row->paramId)), juce::dontSendNotification);
-            if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(
-                    processor_.getParametersState().getParameter(row->paramId)))
-            {
-                const int numChoices = choiceParam->choices.size();
-                row->slider.textFromValueFunction = [lang, id = row->paramId, numChoices,
-                        choices = choiceParam->choices](double value) {
-                    const int index = juce::jlimit(0, numChoices - 1, static_cast<int>(value));
-                    auto translated = choiceText(id, index, lang);
-                    return translated.isNotEmpty() ? translated : choices[index];
-                };
-                row->slider.updateText();
-            }
+            if (row->comboAttachment != nullptr)
+                if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*>(
+                        processor_.getParametersState().getParameter(row->paramId)))
+                    fillCombo(row->combo, row->paramId, choiceParam->choices, lang);
         }
         if (pg->hasFileRow)
         {
@@ -282,6 +294,8 @@ void ViPER4HostAudioProcessorEditor::resized()
             row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
             if (row->buttonAttachment != nullptr)
                 row->toggle.setBounds(rowBounds.removeFromLeft(labelWidth));
+            else if (row->comboAttachment != nullptr)
+                row->combo.setBounds(rowBounds.removeFromLeft(120));
             else
                 row->slider.setBounds(rowBounds);
         }

@@ -19,9 +19,11 @@ private:
     {
         juce::String paramId;
         juce::Label label;
-        juce::Slider slider;       // for float / choice params
+        juce::Slider slider;       // for float params
+        juce::ComboBox combo;      // for choice params
         juce::ToggleButton toggle; // for bool params
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sliderAttachment;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> comboAttachment;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> buttonAttachment;
     };
 
@@ -39,6 +41,8 @@ private:
     };
 
     void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
+    void fillCombo(juce::ComboBox& combo, const juce::String& paramId,
+        const juce::StringArray& choices, const juce::String& languageCode);
     void relabelAll(const juce::String& languageCode);
     void selectLanguage(int index);
     void pickFile(ParamGroup& group);
