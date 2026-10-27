@@ -1,16 +1,13 @@
 #pragma once
 
-// Frequency-response curve editor shared by the graphic EQ (fixed ISO band
-// frequencies, drag = gain) and the dynamic EQ (draggable freq + gain nodes,
-// click = select band, wheel = fine gain, double-click = reset gain).
+// 图形 EQ（固定 ISO 频点，拖动 = 增益）和动态 EQ（可拖动的频率+增益节点，
+// 单击 = 选中频段，滚轮 = 微调增益，双击 = 重置增益）共用的频响曲线编辑器。
 //
-// Dynamic mode draws the summed RBJ biquad magnitude of every band; Graphic
-// mode mirrors the engine's own bandpass-section math (MinPhaseIIRCoeffs),
-// normalised so the flat setting sits at 0 dB.
-// The editor feeds live data in through raw pointers: an output spectrum
-// (drawn under the curve) and per-band applied gains (Dynamic mode ghost
-// dots showing the dynamics at work). Arrows nudge the selected band
-// (Shift = coarse); Alt+drag / Ctrl+wheel adjusts Q in Dynamic mode.
+// 动态模式画出所有频段 RBJ 双二阶响应之和；图形模式复刻引擎自己的带通
+// 分节算法（MinPhaseIIRCoeffs），并做了归一化，让平直设置真的画在 0 dB。
+// 编辑器通过裸指针喂入实时数据：输出频谱（画在曲线下方）和各频段当前
+// 生效的增益（动态模式的"幽灵点"，展示动态在起作用）。方向键微调选中
+// 频段（Shift = 粗调）；动态模式下 Alt+拖动 / Ctrl+滚轮调 Q。
 
 #include "Theme.h"
 
@@ -34,7 +31,7 @@ public:
         setWantsKeyboardFocus(true);
     }
 
-    // Live data from the editor (may be null until the timer feeds them).
+    // 来自编辑器的实时数据（定时器接管前可能为空）。
     static constexpr int kSpectrumPoints = 128;
     void setSpectrum(const float* db) { spectrumDb = db; }
     void setLiveGains(const float* db) { liveGainDb = db; }
@@ -47,9 +44,9 @@ public:
         }
     }
 
-    // Binds the first `count` bands: prefix "eqBand" (Graphic, eqBand1..N) or
-    // "de" (Dynamic, de1Freq/Q/Gain/Type ...). Called again on band-count
-    // changes; rebuilds the parameter attachments.
+    // 绑定前 `count` 个频段：前缀 "eqBand"（图形 EQ，eqBand1..N）或
+    // "de"（动态 EQ，de1Freq/Q/Gain/Type ……）。频段数变化时会再次调用；
+    // 重建参数附着。
     void setBands(const juce::String& paramPrefix, int count)
     {
         prefix = paramPrefix;
@@ -72,24 +69,23 @@ public:
         repaint();
     }
 
-    // Fired when the user picks a node in Dynamic mode; the editor rebinds its
-    // per-band detail rows to the selected band.
+    // 动态模式下用户选中节点时触发；编辑器把分频段详情行重新绑定到
+    // 选中的频段。
     std::function<void(int)> onSelect;
 
-    // Cached snapshot per paint / drag hit test. Public because the
-    // engine-faithful response math below takes vectors of it.
+    // 每次绘制 / 拖动命中测试时缓存的快照。公开是因为下面贴近引擎的
+    // 频响计算要接收它的 vector。
     struct Band
     {
         double f = 1000.0, g = 0.0, q = 1.0;
         int type = 0;
     };
 
-    // --- engine-faithful Graphic response ----------------------------------
-    // Mirrors ViPERDSP: each band is a fixed bandpass biquad (coefficients
-    // from MinPhaseIIRCoeffs::UpdateCoeffs), the output sums level_k * H_k.
-    // The display is normalised against the flat setting so 0 dB everywhere
-    // really draws as 0 dB — it shows what the user changed, not the 0.636
-    // makeup constant baked into the engine.
+    // --- 贴近引擎的图形 EQ 频响 -------------------------------------------
+    // 复刻 ViPERDSP：每个频段是一个固定带通双二阶（系数来自
+    // MinPhaseIIRCoeffs::UpdateCoeffs），输出是 level_k * H_k 之和。
+    // 显示对平直设置做归一化，让全 0 dB 真的画在 0 dB——展示的是用户
+    // 的改动，而不是引擎里固化的 0.636 补偿常数。
 
     static double bandPoleRadius(double centerFreq, double octaves, double fs)
     {
@@ -135,7 +131,7 @@ public:
 private:
     static constexpr float minFreq = 20.0f, maxFreq = 20000.0f, maxDb = 12.0f;
     static constexpr float padL = 34.0f, padR = 10.0f, padT = 8.0f, padB = 16.0f;
-    // Real engine sample rate where known (setSampleRate); falls back to 48k.
+    // 已知时使用引擎的真实采样率（setSampleRate）；否则回退 48k。
     double fsDraw = 48000.0;
 
     juce::String bandId(int band, const char* suffix) const
@@ -205,7 +201,7 @@ private:
         return bs;
     }
 
-    // --- geometry ----------------------------------------------------------
+    // --- 几何 --------------------------------------------------------------
 
     juce::Rectangle<float> plot() const
     {
@@ -236,12 +232,12 @@ private:
         return (p.getCentreY() - y) / (p.getHeight() * 0.5f) * maxDb;
     }
 
-    // --- mouse -------------------------------------------------------------
+    // --- 鼠标 --------------------------------------------------------------
 
     int pick(juce::Point<float> pos) const
     {
         int best = -1;
-        // Graphic: grab anywhere in the band's x column; Dynamic: nearest node.
+        // 图形模式：抓取落在该频段 x 列上的任意点；动态模式：最近的节点。
         float bestD = mode == Mode::Graphic ? 24.0f * 24.0f : 28.0f * 28.0f;
         const auto bs = snapshot();
         for (int b = 0; b < bandCount; ++b)
@@ -263,7 +259,7 @@ private:
         dragBand = pick(e.position);
         if (dragBand < 0)
             return;
-        // Both modes keep a selection: it drives the keyboard nudging too.
+        // 两种模式都保留选中态：键盘微调也依赖它。
         if (selected != dragBand)
         {
             selected = dragBand;
@@ -284,7 +280,7 @@ private:
     {
         if (dragBand < 0)
             return;
-        // Alt + vertical drag rides the Q value instead of the gain.
+        // Alt + 纵向拖动改的是 Q 值而不是增益。
         if (mode == Mode::Dynamic && e.mods.isAltDown())
         {
             setParam(bandId(dragBand, "Q"),
@@ -336,7 +332,7 @@ private:
         if (b < 0)
             return;
         if (auto* p = rp(gainId(b)))
-            p->setValueNotifyingHost(p->getDefaultValue()); // back to 0 dB
+            p->setValueNotifyingHost(p->getDefaultValue()); // 回到 0 dB
     }
 
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
@@ -344,7 +340,7 @@ private:
         const int b = dragBand >= 0 ? dragBand : pick(e.position);
         if (b < 0 || wheel.deltaY == 0)
             return;
-        // Ctrl/Alt + wheel rides Q; plain wheel rides gain.
+        // Ctrl/Alt + 滚轮调 Q；普通滚轮调增益。
         if (mode == Mode::Dynamic && (e.mods.isCtrlDown() || e.mods.isAltDown()))
         {
             const auto qid = bandId(b, "Q");
@@ -363,9 +359,8 @@ private:
         gesture(id, false);
     }
 
-    // Arrow keys nudge the selected band. Graphic: left/right walk the bands,
-    // up/down trim gain. Dynamic: left/right move frequency, alt+left/right
-    // trim Q. Shift multiplies the step by 4.
+    // 方向键微调选中频段。图形模式：左/右在频段间移动，上/下调增益。
+    // 动态模式：左/右改频率，alt+左/右调 Q。Shift 把步长乘 4。
     bool keyPressed(const juce::KeyPress& k) override
     {
         if (bandCount == 0)
@@ -422,7 +417,7 @@ private:
         return true;
     }
 
-    // --- drawing -----------------------------------------------------------
+    // --- 绘制 --------------------------------------------------------------
 
     void paint(juce::Graphics& g) override
     {
@@ -435,7 +430,7 @@ private:
         const auto p = plot();
         const auto bs = snapshot();
 
-        // grid: log-frequency ticks + dB lines
+        // 网格：对数频率刻度 + dB 横线
         g.setFont(juce::Font(juce::FontOptions(10.0f)));
         const float fTicks[] = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
         const char* fLabels[] = { "50", "100", "200", "500", "1k", "2k", "5k", "10k" };
@@ -462,7 +457,7 @@ private:
             }
         }
 
-        // output spectrum underlay (fed by the editor's timer)
+        // 输出频谱垫底（编辑器的定时器喂入）
         if (spectrumDb != nullptr)
         {
             juce::Path spec;
@@ -482,7 +477,7 @@ private:
             g.strokePath(spec, juce::PathStrokeType(1.0f));
         }
 
-        // response curve + soft fill under it
+        // 频响曲线 + 曲线下方的柔和填充
         auto path = curvePath(bs);
         juce::Path fill = path;
         fill.lineTo(p.getRight(), p.getCentreY());
@@ -493,7 +488,7 @@ private:
         g.setColour(c(accent));
         g.strokePath(path, juce::PathStrokeType(2.0f));
 
-        // band handles
+        // 频段手柄
         for (int b = 0; b < bandCount; ++b)
         {
             const float x = xOf(bs[(size_t) b].f), y = yOf(bs[(size_t) b].g);
@@ -505,7 +500,7 @@ private:
             g.drawEllipse(x - 5.5f, y - 5.5f, 11.0f, 11.0f, 1.6f);
         }
 
-        // Dynamic-mode ghost dots: where the dynamics currently push each band
+        // 动态模式的幽灵点：各频段此刻被动态推到的位置
         if (mode == Mode::Dynamic && liveGainDb != nullptr)
         {
             for (int b = 0; b < bandCount; ++b)
@@ -520,7 +515,7 @@ private:
             }
         }
 
-        // readout for the active band
+        // 活动频段的读数
         const int rb = dragBand >= 0 ? dragBand
             : hover >= 0             ? hover
                                      : (mode == Mode::Dynamic ? selected : -1);
@@ -537,7 +532,7 @@ private:
         }
     }
 
-    // One RBJ biquad section's magnitude in dB at frequency f.
+    // 单个 RBJ 双二阶分节在频率 f 处的幅度（dB）。
     double sectionDb(const Band& band, double f) const
     {
         const double A = std::pow(10.0, band.g / 40.0);
@@ -546,7 +541,7 @@ private:
             * juce::jlimit(minFreq, maxFreq, (float) band.f) / fsDraw;
         const double cw = std::cos(w0), sw = std::sin(w0);
         double b0, b1, b2, a0, a1, a2;
-        if (band.type == 0) // peak
+        if (band.type == 0) // 峰值
         {
             const double al = sw / (2.0 * q);
             b0 = 1 + al * A; b1 = -2 * cw; b2 = 1 - al * A;
@@ -555,8 +550,8 @@ private:
         else
         {
             const double sa = std::sqrt(A);
-            const double al = sw / 2.0 * std::sqrt(2.0); // shelf slope S = 1
-            if (band.type == 1) // low shelf
+            const double al = sw / 2.0 * std::sqrt(2.0); // 架构斜率 S = 1
+            if (band.type == 1) // 低架
             {
                 b0 = A * ((A + 1) - (A - 1) * cw + 2 * sa * al);
                 b1 = 2 * A * ((A - 1) - (A + 1) * cw);
@@ -565,7 +560,7 @@ private:
                 a1 = -2 * ((A - 1) + (A + 1) * cw);
                 a2 = (A + 1) + (A - 1) * cw - sa * al;
             }
-            else // high shelf
+            else // 高架
             {
                 b0 = A * ((A + 1) + (A - 1) * cw + 2 * sa * al);
                 b1 = -2 * A * ((A - 1) + (A + 1) * cw);
@@ -600,7 +595,7 @@ private:
             return path;
         }
 
-        // Graphic: engine-faithful summed bandpass response.
+        // 图形模式：贴近引擎的带通响应求和。
         const int steps = juce::jmax(2, juce::roundToInt(p.getWidth()));
         path.startNewSubPath(p.getX(), yOf(graphicResponseDb(bs, freqOf(p.getX()))));
         for (int s = 1; s <= steps; ++s)
@@ -624,8 +619,8 @@ private:
     juce::String prefix;
     int bandCount = 0, selected = 0, hover = -1, dragBand = -1;
     float qAtDragStart = 1.0f, yAtDragStart = 0.0f;
-    const float* spectrumDb = nullptr; // editor-owned, kSpectrumPoints entries
-    const float* liveGainDb = nullptr; // editor-owned, one per DynEQ band
+    const float* spectrumDb = nullptr; // 编辑器持有，kSpectrumPoints 个元素
+    const float* liveGainDb = nullptr; // 编辑器持有，每个动态 EQ 频段一个
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EqCurve)

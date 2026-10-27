@@ -1,10 +1,8 @@
 #pragma once
 
-// Multiband-compressor crossover strip: a log-frequency bar whose draggable
-// handles are the crossover points; the regions between them are the bands,
-// and clicking a region selects that band (the editor rebinds its detail rows
-// to it). Same interaction family as EqCurve, but no gain axis — the vertical
-// dimension only carries the handles.
+// 多段压缩器的分频条：一条对数频率轴，可拖动的手柄就是分频点；手柄之间
+// 的区间就是频段，点击某个区间选中该频段（编辑器会把详情行重新绑定到它）。
+// 与 EqCurve 同一套交互方式，但没有增益轴——纵向只用来放手柄。
 
 #include "Theme.h"
 
@@ -24,7 +22,7 @@ public:
         setMouseClickGrabsKeyboardFocus(false);
     }
 
-    // `bands` regions need bands-1 crossover params (mbcCross1..N).
+    // `bands` 个频段需要 bands-1 个分频参数（mbcCross1..N）。
     void setBands(int bands)
     {
         bandCount = juce::jlimit(1, 5, bands);
@@ -40,14 +38,14 @@ public:
         repaint();
     }
 
-    // Live per-band gain reduction (negative dB) from the editor's meters.
+    // 各频段的实时增益衰减（负 dB 值），由编辑器的量表传入。
     void setBandGrDb(const float* gr) { bandGrDb = gr; }
 
     std::function<void(int)> onSelect;
 
 private:
     static constexpr float minFreq = 20.0f, maxFreq = 20000.0f;
-    static constexpr int barH = 34; // interactive bar height inside the strip
+    static constexpr int barH = 34; // 条带内部可交互条的高度
 
     juce::RangedAudioParameter* rp(const juce::String& id) const
     {
@@ -82,7 +80,7 @@ private:
         return minFreq * std::pow(10.0, (x - b.getX()) / b.getWidth()
             * (std::log10(maxFreq) - std::log10(minFreq)));
     }
-    // Frequency of a handle clamped between its neighbours.
+    // 手柄频率钳制在相邻手柄之间。
     float clampedFreq(int c, float f) const
     {
         const float lo = c > 1 ? crossValue(c - 1) : minFreq;
@@ -201,7 +199,7 @@ private:
                 juce::Justification::centred);
         }
 
-        // bands: number centred in each region; selected region gets a wash
+        // 频段：编号居中显示在每个区间里；选中区间加一层底色
         for (int band = 0; band < bandCount; ++band)
         {
             const float lo = band == 0 ? b.getX() : xOf(crossValue(band));
@@ -211,7 +209,7 @@ private:
                 g.setColour(c(accent).withAlpha(0.12f));
                 g.fillRect(juce::Rectangle<float>(lo, b.getY(), hi - lo, b.getHeight()));
             }
-            // live gain-reduction bar for this band (0..-24 dB -> bar height)
+            // 该频段的实时增益衰减柱（0..-24 dB -> 柱高）
             if (bandGrDb != nullptr)
             {
                 const float grDb = juce::jlimit(0.0f, 24.0f, -bandGrDb[band]);
@@ -227,7 +225,7 @@ private:
                 juce::Justification::centred);
         }
 
-        // crossover handles
+        // 分频手柄
         for (int cros = 1; cros < bandCount; ++cros)
         {
             const float x = xOf(crossValue(cros));
@@ -239,7 +237,7 @@ private:
             g.drawEllipse(x - 4.5f, b.getCentreY() - 4.5f, 9.0f, 9.0f, 1.4f);
         }
 
-        // readout for the hovered / dragged handle
+        // 悬停 / 拖动中手柄的读数
         const int rb = dragCross > 0 ? dragCross : hoverCross;
         if (rb > 0)
         {

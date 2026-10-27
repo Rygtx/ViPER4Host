@@ -38,9 +38,9 @@ public:
     juce::String getUiLanguage() const;
     void setUiLanguage(const juce::String& languageCode);
 
-    // Live metering for the editor's curves and GR meters. Audio thread
-    // writes, message thread polls; plain atomics are the standard
-    // best-effort metering contract (a torn/stale frame is harmless).
+    // 供编辑器的曲线和 GR 表用的实时电平数据。音频线程写，消息线程轮询；
+    // 普通原子变量就是标准的"尽力而为"电平约定（某帧读到撕裂/过期数据
+    // 也无妨）。
     struct Meters
     {
         std::atomic<float> fetGrDb{0.0f};
@@ -50,16 +50,15 @@ public:
             {0.0f}, {0.0f}, {0.0f}, {0.0f}, {0.0f}};
     };
     Meters meters_;
-    // Mono output tap feeding the editor's spectrum analyzer.
+    // 喂给编辑器频谱分析器的单声道输出抽头。
     juce::AbstractFifo spectrumFifo_{16384};
     float spectrumBuffer_[16384]{};
 
-    // Preset support: state swap that keeps the uiLanguage property alive.
+    // 预设支持：换状态树时保住 uiLanguage 属性。
     void applyStateTree(const juce::ValueTree& newState);
 
-    // File-based effects. These parse on the calling (message) thread and hand
-    // the result to the audio thread via an atomic slot; returns an empty
-    // string on success, else a localised error message key suffix.
+    // 文件类效果。在调用方（消息）线程解析，通过一个原子槽位把结果交给
+    // 音频线程；成功返回空字符串，否则返回本地化错误消息的键名后缀。
     juce::String loadConvolverFile(const juce::String& path);
     juce::String loadDdcFile(const juce::String& path);
 
@@ -84,10 +83,9 @@ private:
     viper::ViPERParams lastAppliedParams_{};
     std::vector<float> interleaved_;
     juce::AudioFormatManager formatManager_;
-    // File payloads staged by the message thread, applied on the audio thread
-    // (the engine mutates buffers the audio thread reads). C++17 has no
-    // atomic<shared_ptr>; the audio thread try_locks and skips a block if the
-    // slot is busy for the microsecond the handoff takes.
+    // 由消息线程暂存的文件数据，在音频线程上应用（引擎会改写音频线程
+    // 要读的缓冲区）。C++17 没有 atomic<shared_ptr>；音频线程用 try_lock，
+    // 槽位忙时跳过一个块——交接只花微秒级时间。
     std::mutex pendingMutex_;
     std::shared_ptr<PendingKernel> pendingKernel_;
     std::shared_ptr<PendingDdc> pendingDdc_;

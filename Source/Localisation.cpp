@@ -11,7 +11,7 @@ const char* kLanguages[] = { "en", "zh-Hans", "zh-Hant" };
 
 juce::var loadLanguage(const juce::String& code)
 {
-    // JUCE's binary data sanitises file names: "zh-Hans.json" -> "zhHans_json".
+    // JUCE 会重写二进制资源名："zh-Hans.json" -> "zhHans_json"。
     const juce::String resourceName = code.replace("-", "") + "_json";
     int size = 0;
     if (const auto* data = Viper4HostLocalisationData::getNamedResource(
@@ -53,10 +53,9 @@ juce::String tr(const juce::String& languageCode, const juce::String& key)
 
 juce::String choiceText(const juce::String& paramId, int index, const juce::String& languageCode)
 {
-    // Key convention: <paramId><index>. Per-band dynamic-EQ filter types share
-    // one key set (de1Type, de2Type, ... all map to deType<index>). Returns
-    // empty when untranslated (tr() falls back to the key) so callers can use
-    // the raw choice string.
+    // 键名约定：<paramId><序号>。各分带的动态 EQ 滤波类型共用一套键
+    // （de1Type、de2Type……都映射到 deType<序号>）。未翻译时返回空串
+    // （tr() 会回退显示键名），调用方可据此改用原始选项文本。
     const juce::String key = paramId.endsWith("Type")
         ? "deType" + juce::String(index)
         : paramId + juce::String(index);
@@ -97,7 +96,7 @@ void applyJuceTranslations(const juce::String& languageCode)
         return;
     }
 
-    // LocalisedStrings parses one "original"="translated" pair per line.
+    // LocalisedStrings 每行解析一对 "原文"="译文"。
     juce::StringArray items;
     for (const auto& pair : pairs->getProperties())
         items.add(pair.name.toString().quoted() + "=" + pair.value.toString().quoted());

@@ -1,13 +1,12 @@
 #pragma once
 
-// Stereo-imager field view: the classic three-band stereo display, doubling
-// as the editor. Frequency runs up the vertical axis; the two horizontal
-// lines are the low/mid and mid/high crossovers (drag vertically). Each
-// band's horizontal spread is its width (drag horizontally): centre = 1.0
-// untouched, left edge = mono (0), right edge = double (2).
+// 立体声声像器的场视图：经典的三频段立体声显示，兼任编辑器。频率沿纵轴
+// 向上；两条横线分别是低/中、中/高分频点（纵向拖动）。每个频段横条的
+// 宽度就是它的声场宽度（横向拖动）：中心 = 1.0 不变，左缘 = 单声道 (0)，
+// 右缘 = 翻倍 (2)。
 //
-// Replaces the group's five slider rows; the language for its zone labels is
-// read from the APVTS state each paint, so relabelAll needs no special case.
+// 取代该分组的五排滑块；区域标签的语言每次绘制时从 APVTS 状态读取，
+// 所以 relabelAll 不需要为它写特例。
 
 #include "Localisation.h"
 #include "Theme.h"
@@ -54,7 +53,7 @@ private:
     {
         return getLocalBounds().toFloat().reduced(6.0f);
     }
-    // Frequency runs bottom (20 Hz) to top (20 kHz), like a spectrum.
+    // 频率沿纵轴从底部 (20 Hz) 到顶部 (20 kHz)，与频谱图一致。
     float yOf(double f) const
     {
         const auto r = fieldRect();
@@ -67,13 +66,13 @@ private:
         return minFreq * std::pow(10.0, (r.getBottom() - y) / r.getHeight()
             * (std::log10(maxFreq) - std::log10(minFreq)));
     }
-    // Which band does y fall in? 0 = low, 1 = mid, 2 = high.
+    // y 落在哪个频段？0 = 低频，1 = 中频，2 = 高频。
     int zoneAt(float y) const
     {
         return y < yOf(highCross()) ? 2 : (y < yOf(lowCross()) ? 1 : 0);
     }
 
-    // --- mouse -------------------------------------------------------------
+    // --- 鼠标 -------------------------------------------------------------
 
     void mouseDown(const juce::MouseEvent& e) override
     {
@@ -81,9 +80,9 @@ private:
         const float dLow = std::abs(e.position.y - yOf(lowCross()));
         const float dHigh = std::abs(e.position.y - yOf(highCross()));
         if (dLow < 8.0f && dLow <= dHigh)
-            dragCross = 1; // low/mid line
+            dragCross = 1; // 低/中分频线
         else if (dHigh < 8.0f)
-            dragCross = 2; // mid/high line
+            dragCross = 2; // 中/高分频线
         else
             dragZone = zoneAt(e.position.y);
         if (dragCross <= 0 && dragZone < 0)
@@ -116,7 +115,7 @@ private:
 
     static float widthFromX(float x, const juce::Rectangle<float>& r)
     {
-        // left edge -> 0 (mono), centre -> 1 (untouched), right edge -> 2
+        // 左缘 -> 0（单声道），中心 -> 1（不变），右缘 -> 2
         return juce::jlimit(0.0f, 2.0f, 2.0f * (x - r.getX()) / r.getWidth());
     }
 
@@ -156,17 +155,17 @@ private:
 
     void mouseDoubleClick(const juce::MouseEvent& e) override
     {
-        // Only widths reset; crossover lines have no meaningful shared default.
+        // 只有宽度会重置；分频线没有有意义的公共默认值。
         if (std::abs(e.position.y - yOf(lowCross())) < 8.0f
             || std::abs(e.position.y - yOf(highCross())) < 8.0f)
             return;
         const int zone = zoneAt(e.position.y);
         if (zone >= 0)
             if (auto* p = rp(widthIds[zone]))
-                p->setValueNotifyingHost(p->getDefaultValue()); // back to 1.0
+                p->setValueNotifyingHost(p->getDefaultValue()); // 回到 1.0
     }
 
-    // --- drawing -----------------------------------------------------------
+    // --- 绘制 -------------------------------------------------------------
 
     void paint(juce::Graphics& g) override
     {
@@ -177,14 +176,14 @@ private:
         g.setColour(c(field));
         g.fillRoundedRectangle(r, 5.0f);
 
-        // centre line (mono reference)
+        // 中线（单声道参考）
         g.setColour(c(outline).brighter(0.2f));
         g.fillRect(juce::Rectangle<float>(r.getCentreX(), r.getY(), 1.0f, r.getHeight()));
 
-        // bands: zone label + width spread from the centre
+        // 频段：区域标签 + 从中心展开的宽度条
         {
             juce::Graphics::ScopedSaveState saved(g);
-            g.reduceClipRegion(r.toNearestInt()); // width > 1 overflows the field
+            g.reduceClipRegion(r.toNearestInt()); // 宽度 > 1 时会越出场区
             for (int zone = 0; zone < 3; ++zone)
             {
                 const float yTop = zone == 2 ? r.getY() : yOf(zone == 1 ? highCross() : lowCross());
@@ -212,7 +211,7 @@ private:
                 juce::Justification::centredLeft);
         }
 
-        // crossover lines (drag vertically)
+        // 分频线（纵向拖动）
         for (int line = 1; line <= 2; ++line)
         {
             const float y = yOf(line == 1 ? lowCross() : highCross());
@@ -223,7 +222,7 @@ private:
             g.fillEllipse(r.getRight() - 11.0f, y - 4.0f, 8.0f, 8.0f);
         }
 
-        // readout: hovered band width or crossover frequency
+        // 读数：悬停频段的宽度，或分频频率
         g.setFont(juce::Font(juce::FontOptions(11.0f)));
         g.setColour(c(textBright));
         juce::String readout;

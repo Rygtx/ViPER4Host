@@ -1,9 +1,8 @@
 #pragma once
 
-// Dark theme with a ViPER-red accent. Everything is styled through a single
-// LookAndFeel: colours are set once in the constructor, plus a handful of
-// draw overrides for the pieces the defaults can't express (slim sliders,
-// switch-style toggles, panel-style groups).
+// 深色主题，青色点缀。所有样式集中在一个 LookAndFeel 里：
+// 颜色在构造函数里一次性设好，再对默认样式表达不了的少数控件（细滑块、
+// 开关式按钮、面板式分组框）重写绘制函数。
 
 #include <JuceHeader.h>
 
@@ -11,23 +10,23 @@ namespace v4h
 {
 namespace theme
 {
-constexpr uint32_t background = 0xff14161b; // window
-constexpr uint32_t header = 0xff1b1e25; // title bar strip
-constexpr uint32_t panel = 0xff1e212a; // group background
-constexpr uint32_t panelLight = 0xff262a35; // buttons, hover
-constexpr uint32_t outline = 0xff2c313d; // borders
-constexpr uint32_t field = 0xff12141a; // text boxes, combos
-constexpr uint32_t accent = 0xff2dd4bf; // teal accent
+constexpr uint32_t background = 0xff14161b; // 窗口
+constexpr uint32_t header = 0xff1b1e25; // 标题栏
+constexpr uint32_t panel = 0xff1e212a; // 分组背景
+constexpr uint32_t panelLight = 0xff262a35; // 按钮、悬停
+constexpr uint32_t outline = 0xff2c313d; // 边框
+constexpr uint32_t field = 0xff12141a; // 文本框、下拉框
+constexpr uint32_t accent = 0xff2dd4bf; // 青色点缀
 constexpr uint32_t accentBright = 0xff7ce8db;
 constexpr uint32_t text = 0xffc9cdd6;
 constexpr uint32_t textBright = 0xffedeff4;
 constexpr uint32_t textDim = 0xff878d99;
-constexpr uint32_t gr = 0xfffb923c; // gain-reduction amber (industry convention)
+constexpr uint32_t gr = 0xfffb923c; // 增益衰减琥珀色（行业惯例）
 
 inline juce::Colour c(uint32_t v) { return juce::Colour(v); }
 } // namespace theme
 
-// Shared formatting: 1234 Hz -> "1.23 kHz", 870 -> "870 Hz" (trims trailing zeros).
+// 通用格式化：1234 Hz -> "1.23 kHz"，870 -> "870 Hz"（去掉末尾多余的 0）。
 inline juce::String freqText(float f)
 {
     if (f >= 1000.0f)
@@ -49,8 +48,8 @@ public:
         using juce::LookAndFeel_V4;
 
         setColour(juce::ResizableWindow::backgroundColourId, c(background));
-        // Plain labels are text-only (transparent); slider text boxes style
-        // themselves from the Slider::textBox* ids below.
+        // 纯文本标签（背景透明）；滑块文本框自己按下面的
+        // Slider::textBox* 颜色 id 来画。
         setColour(juce::Label::textColourId, c(text));
         setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -89,11 +88,11 @@ public:
         return withDefaultMetrics(juce::FontOptions(13.0f));
     }
 
-    // Thumb radius 7 keeps JUCE's sliderPos mapping in sync with the drawing
-    // below (thumb travels exactly to the track ends).
+    // 拇指半径 7 使 JUCE 的 sliderPos 映射与下面的绘制保持一致
+    // （拇指正好走到轨道两端）。
     int getSliderThumbRadius(juce::Slider&) override { return 7; }
 
-    // Slim rounded track, accent fill up to a round thumb.
+    // 细圆角轨道，填充到圆拇指为止。
     void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float sliderPos,
         float /*min*/, float /*max*/, juce::Slider::SliderStyle, juce::Slider& slider) override
     {
@@ -106,8 +105,8 @@ public:
         const float right = static_cast<float>(x + w) - margin;
         auto track = juce::Rectangle<float>(left, cy - radius, juce::jmax(right - left, 0.0f), trackH);
 
-        // JUCE maps min/max to the component's full width; without this clamp
-        // the thumb overhangs the track ends by its radius at min/max values.
+        // JUCE 把 min/max 映射到组件全宽；不加上面的钳制的话，
+        // 拇指在最小/最大值时会越出轨道端点一个半径。
         const float pos = juce::jlimit(left, right, sliderPos);
 
         g.setColour(c(outline));
@@ -126,7 +125,7 @@ public:
         g.drawEllipse(pos - 6.5f, cy - 6.5f, 13.0f, 13.0f, 2.0f);
     }
 
-    // Rounded field with a small chevron; hover/focus gets the accent outline.
+    // 圆角下拉框加一个小箭头；悬停/聚焦时描边用点缀色。
     void drawComboBox(juce::Graphics& g, int width, int height, bool isButtonDown,
         int, int, int, int, juce::ComboBox& box) override
     {
@@ -139,7 +138,7 @@ public:
         g.setColour(highlight ? c(accent) : c(outline));
         g.drawRoundedRectangle(bounds, 5.0f, 1.0f);
 
-        // Chevron centred in the right edge.
+        // 箭头居中于右缘。
         auto arrow = juce::Rectangle<float>(width - 22.0f, height * 0.5f - 3.5f, 8.0f, 7.0f);
         juce::Path p;
         p.startNewSubPath(arrow.getX(), arrow.getY());
@@ -150,15 +149,15 @@ public:
             juce::PathStrokeType::rounded));
     }
 
-    // Switch-style toggle: pill + sliding knob, no text (labels carry it).
+    // 开关式切换按钮：胶囊轨道 + 滑动圆钮，不画文字（文字由标签负责）。
     void drawToggleButton(juce::Graphics& g, juce::ToggleButton& button, bool over, bool) override
     {
         using namespace theme;
         auto bounds = button.getLocalBounds().toFloat().withSizeKeepingCentre(40.0f, 20.0f);
         const bool on = button.getToggleState();
 
-        // Fill inset so the 1px outline sits exactly on the silhouette — an
-        // outline drawn on the raw bounds adds a hard halo that reads square.
+        // 填充先内缩，让 1px 描边正好贴着填充轮廓——直接画在原始
+        // 边界上的描边会带出一圈硬光晕，看起来是方的。
         auto pill = bounds.reduced(0.75f);
         g.setColour(c(on ? accent : panelLight));
         if (over)
@@ -173,16 +172,15 @@ public:
         g.fillEllipse(x, pill.getCentreY() - knob * 0.5f, knob, knob);
     }
 
-    // Panel-style group: title sits on the top border line, fieldset-style.
-    // The border is a path with a gap where the text goes — no background
-    // fill behind the text, and the card fill starts at the border line.
+    // 面板式分组框：标题坐在顶部边框线上，fieldset 风格。边框是一段
+    // 在标题处留缺口的路径——文字背后不填背景，卡片填充从边框线开始。
     void drawGroupComponentOutline(juce::Graphics& g, int width, int height,
         const juce::String& text, const juce::Justification&, juce::GroupComponent&) override
     {
         using namespace theme;
-        const float cs = 7.0f; // corner radius
+        const float cs = 7.0f; // 圆角半径
         const float textH = 16.0f;
-        const float yTop = textH * 0.5f; // border edge passes through the text centre
+        const float yTop = textH * 0.5f; // 边框边缘穿过标题文字中心
         const float textX = 14.0f;
         const float textGap = 6.0f;
 

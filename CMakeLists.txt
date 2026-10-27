@@ -19,8 +19,8 @@ if(NOT EXISTS "${VIPERDSP_DIR}/viper/ViPER.cpp")
   message(FATAL_ERROR "ViPERDSP not found at ${VIPERDSP_DIR}. Run 'git submodule update --init --recursive' first.")
 endif()
 
-# JUCE's VST2 backend expects the old Steinberg VST2 SDK headers; FST provides
-# license-clean equivalents, copied into the layout JUCE expects.
+# JUCE 的 VST2 后端需要老的 Steinberg VST2 SDK 头文件；FST 提供
+# 无许可证问题的等价物，按 JUCE 期望的目录布局拷贝过去。
 set(VST2_SDK_COMPAT_DIR "${CMAKE_CURRENT_BINARY_DIR}/juce_vst2_sdk")
 set(VST2_SDK_COMPAT_HEADERS "${VST2_SDK_COMPAT_DIR}/pluginterfaces/vst2.x")
 file(MAKE_DIRECTORY "${VST2_SDK_COMPAT_HEADERS}")
@@ -30,11 +30,11 @@ configure_file("${FST_DIR}/fst/fst.h" "${VST2_SDK_COMPAT_HEADERS}/fst.h" COPYONL
 
 add_subdirectory("${VIPERDSP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/ViPERDSP")
 
-# ViPERDSP targets gcc/clang normally; MSVC needs _USE_MATH_DEFINES for M_PI
-# and the -O3/-flto flags it sets only produce warnings there.
+# ViPERDSP 正常情况下面向 gcc/clang；MSVC 需要 _USE_MATH_DEFINES 才有
+# M_PI，它设置的 -O3/-flto 选项在这里只会产生警告。
 if(MSVC)
   target_compile_definitions(ViPERDSP PRIVATE _USE_MATH_DEFINES NOMINMAX)
-  set_property(TARGET ViPERDSP PROPERTY CXX_STANDARD 20) # designated initializers in Cure.cpp
+  set_property(TARGET ViPERDSP PROPERTY CXX_STANDARD 20) # Cure.cpp 用了指定初始化器
 endif()
 add_subdirectory("${JUCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/JUCE")
 
@@ -52,7 +52,7 @@ juce_add_plugin(ViPER4Host
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE
   PLUGIN_MANUFACTURER_CODE Vp4h
   PLUGIN_CODE Vp4H
-  FORMATS VST VST3 Standalone # Standalone exe doubles as a UI preview harness
+  FORMATS VST VST3 Standalone # 独立版 exe 兼作 UI 预览载体
   PRODUCT_NAME "ViPER4Host"
   VST2_CATEGORY kPlugCategEffect
   VST3_CATEGORIES Fx
@@ -95,8 +95,8 @@ target_compile_definitions(ViPER4Host
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_REPORT_APP_USAGE=0
-    # JuceHeader.h would do `using namespace juce;`, which puts juce::IIRFilter
-    # into unqualified lookup and collides with ViPERDSP's global IIRFilter.
+    # JuceHeader.h 会 `using namespace juce;`，把 juce::IIRFilter 带进
+    # 非限定名字查找，与 ViPERDSP 的全局 IIRFilter 冲突。
     DONT_SET_USING_JUCE_NAMESPACE=1
 )
 
@@ -108,7 +108,7 @@ target_compile_options(ViPER4Host
 target_link_libraries(ViPER4Host
   PRIVATE
     juce::juce_audio_utils
-    juce::juce_dsp # spectrum analyzer FFT
+    juce::juce_dsp # 频谱分析器 FFT
     ViPER4HostLocalisationData
     ViPERDSP
   PUBLIC

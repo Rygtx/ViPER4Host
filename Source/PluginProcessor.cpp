@@ -12,23 +12,23 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
 {
     formatManager_.registerBasicFormats();
     parameters_.state.setProperty("uiLanguage", v4h::localisation::systemLanguage(), nullptr);
-    // The global LocalisedStrings table would leak into a host's own JUCE
-    // strings, so only install it in the standalone app.
+    // 全局 LocalisedStrings 表会泄漏进宿主自己的 JUCE 文案，
+    // 所以只在独立版里安装。
     if (wrapperType == juce::AudioProcessor::wrapperType_Standalone)
         v4h::localisation::applyJuceTranslations(getUiLanguage());
 
 #if JUCE_DEBUG
-    // Self-checks for the parsing this file owns; a wrong layout compiles
-    // fine and only sounds wrong, so pin it at startup (debug builds).
+    // 本文件负责的解析逻辑自检；布局写错也能正常编译，只是听起来不对，
+    // 所以在启动时钉死（仅调试构建）。
     {
         std::vector<viper::BiquadSection> lo, hi;
-        // Layout: 5 floats per section, first half 44.1 kHz, second half 48 kHz.
+        // 布局：每节 5 个浮点数，前半 44.1 kHz，后半 48 kHz。
         const bool ok = parseDdcText(
             "0 1 2 3 4 5 6 7 8 9 20 21 22 23 24 25 26 27 28 29", lo, hi);
         jassert(ok && lo.size() == 2 && hi.size() == 2
             && lo[0][0] == 0.0f && lo[1][0] == 5.0f
             && hi[0][0] == 20.0f && hi[1][0] == 25.0f);
-        jassert(!parseDdcText("1 2 3 4 5", lo, hi)); // too short
+        jassert(!parseDdcText("1 2 3 4 5", lo, hi)); // 数据太短
     }
 #endif
 }
@@ -49,17 +49,17 @@ ViPER4HostAudioProcessor::~ViPER4HostAudioProcessor() = default;
 
 namespace
 {
-// FET/MBC compressor thresholds and knees live in the natural-log domain:
-// raw = dB * ln(10)/20. Ratios are stored as the signed slope -1/R.
+// FET/MBC 压缩器的阈值和拐点存放在自然对数域：raw = dB * ln(10)/20。
+// 比率以带符号的斜率 -1/R 存储。
 constexpr float kDbToLog = 0.1151293f;
 constexpr float dbToRaw(float db) { return db * kDbToLog; }
 constexpr float ratioToRaw(float ratio) { return -1.0f / ratio; }
 static_assert(dbToRaw(0.0f) == 0.0f && dbToRaw(-6.0f) < -0.69f && dbToRaw(-6.0f) > -0.70f);
 static_assert(ratioToRaw(2.0f) == -0.5f);
 
-// Every sub-struct has operator==; compare all blocks so unwired params can't
-// silently skip re-apply. Lives host-side to keep the ViPERDSP submodule
-// pinned at its upstream commit.
+// 每个子结构体都有 operator==；逐一比较所有块，防止未接线的参数
+// 悄悄跳过重新应用。放在宿主侧，让 ViPERDSP 子模块保持在它的
+// 上游提交不动。
 bool paramsDiffer(const viper::ViPERParams& a, const viper::ViPERParams& b)
 {
     return !(a.master_limiter == b.master_limiter
@@ -88,9 +88,9 @@ bool paramsDiffer(const viper::ViPERParams& a, const viper::ViPERParams& b)
         && a.dynamic_eq == b.dynamic_eq);
 }
 
-// ponytail: assumes the ViPER4Windows .ddc text layout — whitespace
-// separated biquad sections of 5 floats, first half for 44.1 kHz, second
-// half for 48 kHz. Add a header-aware parser if real files disagree.
+// ponytail: 假定是 ViPER4Windows 的 .ddc 文本布局——空白分隔的双二阶
+// 分节，每节 5 个浮点数，前半 44.1 kHz，后半 48 kHz。真文件不一致时
+// 再加一个识别文件头的解析器。
 bool parseDdcText(const juce::String& text,
     std::vector<viper::BiquadSection>& sections44100,
     std::vector<viper::BiquadSection>& sections48000)
@@ -134,32 +134,32 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // Defaults mirror ViPER4Windows (F:\Project\ViPER4Windows,
-    // ViPER4Windows/lib/models/viper_state.dart), converted to host units.
-    // Exception: FET/MBC Adapt stays at 4 s — V4W's engine copy stores a raw
-    // log coefficient there that doesn't map to seconds.
+    // 默认值对照 ViPER4Windows（F:\Project\ViPER4Windows，
+    // ViPER4Windows/lib/models/viper_state.dart）换算成宿主单位。
+    // 例外：FET/MBC 的 Adapt 保持 4 s——V4W 引擎副本里存的是原始对数
+    // 系数，换算不成秒。
 
     auto addBool = [&layout](const char* id, const char* name, bool def = false) {
         layout.add(std::make_unique<BoolParameter>(id, name, def));
     };
     auto addFloat = [&layout](const char* id, const char* name, float min, float max, float def,
                           const char* suffix = "") {
-        // ponytail: range-based decimals (wide ranges are Hz/integers); pass
-        // explicit stringFromValue per param if one ever needs custom formatting.
+        // ponytail: 按数值范围定小数位（范围宽的都是 Hz/整数）；哪个参数
+        // 需要特殊格式，再单独传 stringFromValue。
         const int decimals = max <= 10.0f ? 2 : 0;
         const juce::String label = suffix;
         layout.add(std::make_unique<Parameter>(
             id, name, juce::NormalisableRange<float>(min, max), def,
             juce::AudioParameterFloatAttributes()
                 .withLabel(label)
-                // JUCE 8's getText() doesn't append the label, so do it here.
+                // JUCE 8 的 getText() 不会追加标签后缀，所以在这里补上。
                 .withStringFromValueFunction([decimals, label](float v, int) {
-                    // String(v, 0) isn't "0 decimals" — it falls back to %g
-                    // (6 sig digits, juce_String.cpp writeDouble), so round
-                    // integer params explicitly.
+                    // String(v, 0) 不是"0 位小数"——它会退回 %g（6 位有效
+                    // 数字，见 juce_String.cpp writeDouble），所以整数参数
+                    // 要显式四舍五入。
                     auto text = decimals > 0 ? juce::String(v, decimals)
                                              : juce::String(juce::roundToInt(v));
-                    while (text.containsChar('.') // 1.00 -> 1, 0.50 -> 0.5
+                    while (text.containsChar('.') // 1.00 -> 1，0.50 -> 0.5
                         && (text.endsWithChar('0') || text.endsWithChar('.')))
                         text = text.dropLastCharacters(1);
                     return label.isNotEmpty() ? text + " " + label : text;
@@ -169,24 +169,24 @@ ViPER4HostAudioProcessor::createParameterLayout()
         layout.add(std::make_unique<ChoiceParameter>(id, name, choices, def));
     };
 
-    // Master limiter / output
+    // 主限幅器 / 输出
     addFloat("limiterThreshold", "Limiter Threshold", 0.3f, 1.0f, 1.0f);
     addFloat("limiterVolume", "Output Volume", 0.01f, 2.0f, 1.0f, "x");
     addFloat("limiterPan", "Channel Pan", -1.0f, 1.0f, 0.0f);
 
-    // Playback gain control (AGC)
+    // 播放增益控制（AGC）
     addBool("pgcEnable", "AGC Enable");
     addFloat("pgcStrength", "AGC Strength", 0.5f, 3.0f, 1.0f, "x");
     addFloat("pgcMaxGain", "AGC Max Gain", 1.0f, 10.0f, 1.0f, "x");
     addFloat("pgcOutputThreshold", "AGC Output Threshold", 0.3f, 1.0f, 1.0f);
 
-    // LUFS loudness targeting
+    // LUFS 响度目标
     addBool("lufsEnable", "LUFS Enable");
     addFloat("lufsTarget", "LUFS Target", -24.0f, -8.0f, -14.0f, " LUFS");
     addFloat("lufsMaxGain", "LUFS Max Gain", 0.0f, 12.0f, 6.0f, " dB");
     addChoice("lufsSpeed", "LUFS Speed", { "1", "2", "3" }, 1);
 
-    // FET compressor
+    // FET 压缩器
     addBool("fetEnable", "FET Enable");
     addFloat("fetThreshold", "FET Threshold", -48.0f, 0.0f, -18.0f, " dB");
     addFloat("fetRatio", "FET Ratio", 0.5f, 20.0f, 1.0f, " :1");
@@ -205,7 +205,7 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addFloat("fetAdapt", "FET Adapt Time", 1.0f, 16.0f, 4.0f, " s");
     addBool("fetNoClip", "FET No Clip", true);
 
-    // Graphic equalizer
+    // 图形均衡器
     addBool("eqEnable", "EQ Enable");
     addChoice("eqBandCount", "EQ Bands", { "10", "15", "25", "31" }, 0);
     for (int i = 1; i <= 31; ++i)
@@ -214,7 +214,7 @@ ViPER4HostAudioProcessor::createParameterLayout()
         addFloat(id.toRawUTF8(), id.toRawUTF8(), -12.0f, 12.0f, 0.0f, " dB");
     }
 
-    // Dynamic equalizer
+    // 动态均衡器
     addBool("deEnable", "DynEQ Enable");
     addChoice("deBandCount", "DynEQ Bands", { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 2);
     constexpr float deDefaultFreqs[] = { 60, 150, 400, 60, 60, 60, 60, 60, 60, 60 };
@@ -230,53 +230,53 @@ ViPER4HostAudioProcessor::createParameterLayout()
         addChoice((pfx + "Type").toRawUTF8(), (pfx + "Type").toRawUTF8(), { "Peak", "Low Shelf", "High Shelf" });
     }
 
-    // Psychoacoustic bass
+    // 心理声学低音
     addBool("pBassEnable", "Psychoacoustic Bass Enable");
     addFloat("pBassCutoff", "PB Cutoff", 60.0f, 150.0f, 80.0f, " Hz");
     addFloat("pBassIntensity", "PB Intensity", 0.0f, 1.0f, 0.5f);
     addChoice("pBassHarmonicOrder", "PB Harmonic Order", { "2", "3", "4", "5" }, 1);
     addFloat("pBassOriginalLevel", "PB Original Level", 0.0f, 1.0f, 1.0f);
 
-    // ViPER Bass
+    // ViPER 低音
     addBool("bassEnable", "Bass Enable");
     addChoice("bassMode", "Bass Mode", { "Natural", "Pure Bass+", "Subwoofer" });
     addFloat("bassFreq", "Bass Frequency", 15.0f, 150.0f, 70.0f, " Hz");
     addFloat("bassGain", "Bass Gain", 0.5f, 10.0f, 0.5f, "x");
     addBool("bassAntiPop", "Bass Anti-Pop");
 
-    // Bass Mono
+    // 低音单声道
     addBool("bassMonoEnable", "Bass Mono Enable");
     addChoice("bassMonoMode", "Bass Mono Mode", { "Natural", "Pure Bass+", "Subwoofer" });
     addFloat("bassMonoFreq", "Bass Mono Frequency", 15.0f, 150.0f, 70.0f, " Hz");
     addFloat("bassMonoGain", "Bass Mono Gain", 0.5f, 10.0f, 0.5f, "x");
     addBool("bassMonoAntiPop", "Bass Mono Anti-Pop");
 
-    // Spectrum extension
+    // 频谱延展
     addBool("specExtEnable", "Spectrum Extension Enable");
     addFloat("specExtStrength", "SE Reference Freq", 2200.0f, 8200.0f, 7600.0f, " Hz");
     addFloat("specExtExciter", "SE Exciter", 0.0f, 6.0f, 0.0f);
 
-    // Convolver
+    // 卷积器
     addBool("convEnable", "Convolver Enable");
     addFloat("convCrossChannel", "Convolver Cross Channel", 0.0f, 1.0f, 0.0f);
 
     // DDC
     addBool("ddcEnable", "DDC Enable");
 
-    // Field surround
+    // 声场环绕
     addBool("fieldEnable", "Field Surround Enable");
     addFloat("fieldWidening", "Field Widening", 0.0f, 8.0f, 0.0f);
     addFloat("fieldMidImage", "Field Mid Image", 1.0f, 2.0f, 1.5f);
     addFloat("fieldDepth", "Field Depth", 200.0f, 950.0f, 200.0f);
 
-    // Differential surround
+    // 差分环绕
     addBool("diffEnable", "Diff Surround Enable");
     addFloat("diffDelay", "Diff Delay", 1.0f, 20.0f, 5.0f, " ms");
     addBool("diffReverse", "Diff Reverse");
     addFloat("diffMix", "Diff Wet/Dry Mix", 0.0f, 1.0f, 1.0f);
     addFloat("diffLpCutoff", "Diff LP Cutoff", 0.0f, 20000.0f, 0.0f, " Hz");
 
-    // Stereo imager
+    // 立体声声像器
     addBool("siEnable", "Stereo Imager Enable");
     addFloat("siLowWidth", "SI Low Width", 0.0f, 2.0f, 1.0f);
     addFloat("siMidWidth", "SI Mid Width", 0.0f, 2.0f, 1.0f);
@@ -284,11 +284,11 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addFloat("siLowCrossover", "SI Low Crossover", 80.0f, 400.0f, 200.0f, " Hz");
     addFloat("siHighCrossover", "SI High Crossover", 2000.0f, 8000.0f, 4000.0f, " Hz");
 
-    // Headphone surround+ (VHE)
+    // 耳机环绕+（VHE）
     addBool("vheEnable", "VHE Enable");
     addChoice("vheQuality", "VHE Level", { "Level 1", "Level 2", "Level 3", "Level 4", "Level 5" });
 
-    // Reverberation
+    // 混响
     addBool("reverbEnable", "Reverb Enable");
     addFloat("reverbRoomSize", "Reverb Room Size", 0.0f, 1.0f, 0.0f);
     addFloat("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.0f);
@@ -296,7 +296,7 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addFloat("reverbWet", "Reverb Wet", 0.0f, 1.0f, 0.0f);
     addFloat("reverbDry", "Reverb Dry", 0.0f, 1.0f, 1.0f);
 
-    // Dynamic system
+    // 动态系统
     addBool("dsEnable", "Dynamic System Enable");
     addFloat("dsXLow", "DS X Low", 0.0f, 2400.0f, 100.0f, " Hz");
     addFloat("dsXHigh", "DS X High", 0.0f, 12000.0f, 5600.0f, " Hz");
@@ -311,11 +311,11 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addChoice("clarityMode", "Clarity Mode", { "Natural", "OZone", "XHiFi" });
     addFloat("clarityGain", "Clarity Gain", 0.0f, 4.5f, 0.5f, "x");
 
-    // Cure crossfeed
+    // Cure 串音补偿
     addBool("cureEnable", "Cure Enable");
     addChoice("curePreset", "Cure Preset", { "Preset 1", "Preset 2", "Preset 3" });
 
-    // Tube simulator
+    // 电子管模拟器
     addBool("tubeEnable", "Tube Enable");
     addChoice("tubeModel", "Tube Model", { "12AX7", "12AU7", "6N1P" });
     addFloat("tubeDrive", "Tube Drive", 0.0f, 1.0f, 0.5f);
@@ -325,10 +325,10 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addBool("axEnable", "AnalogX Enable");
     addChoice("axMode", "AnalogX Mode", { "Light", "Medium", "Heavy" });
 
-    // Speaker correction
+    // 扬声器修正
     addBool("spkEnable", "Speaker Correction Enable");
 
-    // Multiband compressor
+    // 多段压缩器
     addBool("mbcEnable", "MBC Enable");
     addChoice("mbcBandCount", "MBC Bands", { "1", "2", "3", "4", "5" }, 4);
     constexpr float mbcDefaultCrossovers[] = { 120.0f, 500.0f, 4000.0f, 8000.0f };
@@ -391,7 +391,7 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     if (numFrames <= 0)
         return;
 
-    // ViPERDSP is 2-channel interleaved; fold everything into stereo.
+    // ViPERDSP 是 2 声道交错格式；把所有声道折叠成立体声。
     const float* left = numChannels > 0 ? buffer.getReadPointer(0) : nullptr;
     const float* right = numChannels > 1 ? buffer.getReadPointer(1) : left;
     if (static_cast<int>(interleaved_.size()) < numFrames * 2)
@@ -402,9 +402,8 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         interleaved_[static_cast<size_t>(i) * 2 + 1] = right != nullptr ? right[i] : 0.0f;
     }
 
-    // File-based payloads are staged by the message thread and swapped in
-    // here: the engine mutates buffers the audio thread reads, so the load
-    // itself must run on this thread.
+    // 文件数据由消息线程暂存，在这里换入：引擎会改写音频线程要读的
+    // 缓冲区，所以加载本身必须在这个线程上跑。
     if (pendingMutex_.try_lock())
     {
         if (auto kernel = std::move(pendingKernel_))
@@ -426,18 +425,17 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             lastAppliedParams_ = params;
         }
 
-        // ponytail: ViPERDSP applies internal delay for convolver/VHE but
-        // exposes no latency getter; we report zero latency. Revisit if the
-        // engine grows a GetLatency API.
+        // ponytail: 卷积器/VHE 会引入引擎内部延迟，但引擎没暴露延迟查询
+        // 接口，所以我们报告零延迟。引擎加了 GetLatency API 时再回来改。
         engine_.Process(interleaved_, static_cast<uint32_t>(numFrames));
     }
 
-    // Metering + mono spectrum tap for the editor. Best-effort: the UI polls
-    // these on a timer, and a stale or torn frame is harmless.
+    // 电平统计 + 供编辑器用的单声道频谱抽头。尽力而为：UI 按定时器
+    // 轮询这些值，读到过期或撕裂的一帧也无妨。
     {
-        constexpr float kRawToDb = 1.0f / 0.1151293f; // engine log domain -> dB
+        constexpr float kRawToDb = 1.0f / 0.1151293f; // 引擎对数域 -> dB
         meters_.fetGrDb.store(-engine_.GetFetGainReduction() * kRawToDb);
-        // Negative dB = reduction, same convention as fetGrDb (GrMeter negates).
+        // 负 dB = 衰减，与 fetGrDb 同一约定（GrMeter 内部取负）。
         meters_.limiterGrDb.store(
             engine_.GetLimiterGain() > 0.0f ? 20.0f * std::log10(engine_.GetLimiterGain()) : 0.0f);
         for (int b = 0; b < 5; ++b)
@@ -458,7 +456,7 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
                 = (interleaved_[static_cast<size_t>(size1 + i) * 2]
                       + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
     }
-    if (bypassed) // frozen meters on the editor would read as "still working"
+    if (bypassed) // 旁路时编辑器上冻结的电平表会被误读成"还在工作"
     {
         meters_.fetGrDb.store(0.0f);
         meters_.limiterGrDb.store(0.0f);
@@ -479,7 +477,7 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
 void ViPER4HostAudioProcessor::buildEngineParams(viper::ViPERParams& p) const
 {
-    // getRawParameterValue is an O(1) lookup; once per block is negligible.
+    // getRawParameterValue 是 O(1) 查找；每块调用一次可以忽略。
     auto v = [this](const char* id) {
         return parameters_.getRawParameterValue(id)->load(std::memory_order_relaxed);
     };
@@ -655,7 +653,7 @@ juce::String ViPER4HostAudioProcessor::loadConvolverFile(const juce::String& pat
     auto reader = std::unique_ptr<juce::AudioFormatReader>(formatManager_.createReaderFor(juce::File(path)));
     if (reader == nullptr)
         return "convErrRead";
-    // ponytail: cap IR length at 10 s; longer picks are almost always a wrong file.
+    // ponytail: 冲激响应长度上限 10 秒；更长的选择几乎都是选错文件。
     auto frames = juce::jlimit<int64_t>(16, static_cast<int64_t>(reader->sampleRate) * 10,
         reader->lengthInSamples);
     const int channels = static_cast<int>(std::min<int64_t>(2, reader->numChannels));
@@ -682,7 +680,7 @@ juce::String ViPER4HostAudioProcessor::loadConvolverFile(const juce::String& pat
 juce::String ViPER4HostAudioProcessor::loadDdcFile(const juce::String& path)
 {
     const juce::File file(path);
-    // ponytail: cap DDC text at 4 MB; larger picks are almost always a wrong file.
+    // ponytail: DDC 文本上限 4 MB；更大的选择几乎都是选错文件。
     if (!file.existsAsFile() || file.getSize() > 4 * 1024 * 1024)
         return "ddcErrRead";
 
@@ -700,7 +698,7 @@ juce::String ViPER4HostAudioProcessor::loadDdcFile(const juce::String& path)
 
 void ViPER4HostAudioProcessor::applyStateTree(const juce::ValueTree& newState)
 {
-    // The uiLanguage property lives inside the state, so carry it across swaps.
+    // uiLanguage 属性存在状态树里，所以换树时要带过去。
     const auto lang = getUiLanguage();
     juce::ScopedLock lock(getCallbackLock());
     parameters_.replaceState(newState);
@@ -737,7 +735,7 @@ void ViPER4HostAudioProcessor::setStateInformation(const void* data, int sizeInB
         if (xml->hasTagName(parameters_.state.getType()))
         {
             parameters_.replaceState(juce::ValueTree::fromXml(*xml));
-            // Reload file-based payloads queued by the restored state.
+            // 重新加载恢复出的状态里记录的文件数据。
             if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString(); conv.isNotEmpty())
                 loadConvolverFile(conv);
             if (const auto ddc = parameters_.state.getProperty("ddcPath", {}).toString(); ddc.isNotEmpty())

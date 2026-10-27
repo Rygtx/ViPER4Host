@@ -11,44 +11,43 @@ constexpr int gap = 8;
 constexpr int rowHeight = 30;
 constexpr int titleHeight = 24;
 constexpr int labelWidth = 130;
-constexpr int curveHeight = 210; // EQ / DynEQ response graph
-constexpr int stripHeight = 60;  // MBC crossover strip
-constexpr int siViewHeight = 190; // stereo imager field view
-constexpr int grMeterHeight = 26; // FET / limiter gain-reduction meter
+constexpr int curveHeight = 210; // EQ / DynEQ 频响图
+constexpr int stripHeight = 60;  // MBC 分频条
+constexpr int siViewHeight = 190; // 立体声声像器场视图
+constexpr int grMeterHeight = 26; // FET / 限幅器增益衰减量表
 
-// Category tabs, in order. Count must match numPages in the header.
+// 分类页签，按顺序。数量必须与头文件里的 numPages 一致。
 const char* pageKeys[] = { "tabIn", "tabVhe", "tabEq", "tabStage", "tabDynamics",
     "tabTone", "tabOutput" };
 static_assert(sizeof(pageKeys) / sizeof(pageKeys[0]) == ViPER4HostAudioProcessorEditor::numPages);
 
-// Which category tab a group lives on. Tabs follow the engine's signal chain
-// (ViPER::Process order): convolver -> VHE -> DDC -> spectrum extend -> EQ ->
-// dynamic EQ -> field surround -> stereo imager -> diff surround -> playback
-// gain -> MBC -> FET -> dynamic system -> tube -> basses -> clarity -> cure ->
-// analogX -> reverb -> speaker correction -> LUFS -> limiter. Every tab is a
-// contiguous chain span, and within a tab groups keep that chain order too
-// (group creation below must match).
+// 每个分组属于哪个分类页签。页签按引擎信号链排列（ViPER::Process 的处理
+// 顺序）：卷积器 -> VHE -> DDC -> 频谱延展 -> EQ -> 动态 EQ -> 声场环绕 ->
+// 立体声声像器 -> 差分环绕 -> 播放增益 -> MBC -> FET -> 动态系统 -> 电子管
+// -> 低音们 -> clarity -> cure -> analogX -> 混响 -> 扬声器修正 -> LUFS ->
+// 限幅器。每个页签是信号链上一段连续区间，页签内的分组也按这条链的顺序
+// 排列（下面的分组创建必须与之对应）。
 int pageOf(const juce::String& gid)
 {
     if (gid == "groupConv" || gid == "groupDdc")
-        return 0; // input-side correction: kernel, DDC curve
+        return 0; // 输入侧修正：卷积核、DDC 曲线
     if (gid == "groupVHE")
-        return 1; // headphone surround virtualisation
+        return 1; // 耳机环绕虚拟化
     if (gid == "groupSpecExt" || gid == "groupEq" || gid == "groupDe")
-        return 2; // frequency response: exciter, EQ, dynamic EQ
+        return 2; // 频率响应：激励器、EQ、动态 EQ
     if (gid == "groupField" || gid == "groupSi" || gid == "groupDiff")
-        return 3; // sound field / surround
+        return 3; // 声场 / 环绕
     if (gid == "groupAGC" || gid.startsWith("groupMbc") || gid == "groupFet" || gid == "groupDs")
-        return 4; // dynamics incl. dynamic system
+        return 4; // 动态类，含动态系统
     if (gid == "groupTube" || gid == "groupPsyBass" || gid == "groupBass"
         || gid == "groupBassMono" || gid == "groupClarity" || gid == "groupCure"
         || gid == "groupAx" || gid == "groupReverb")
-        return 5; // colour: tube, bass harmonics, clarity, cure, analogX, reverb
-    return 6; // output: speaker correction, LUFS, limiter/master
+        return 5; // 音染色：电子管、低音谐波、clarity、cure、analogX、混响
+    return 6; // 输出：扬声器修正、LUFS、限幅器/主控
 }
 
-// Band params (mbc3Threshold, de7Freq) share one label key per role across
-// all bands: mbcN* -> mbcBand*, deN* -> deBand*.
+// 分频段参数（mbc3Threshold、de7Freq）按角色在所有频段间共用一个标签键：
+// mbcN* -> mbcBand*，deN* -> deBand*。
 juce::String labelKey(const juce::String& paramId)
 {
     const bool isMbc = paramId.startsWith("mbc");
@@ -71,14 +70,14 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 {
     setLookAndFeel(&lookAndFeel_);
 
-    // Spectrum analyzer setup: Hann window + silent initial spectrum.
+    // 频谱分析器初始化：Hann 窗 + 静音初始频谱。
     for (size_t i = 0; i < hann_.size(); ++i)
         hann_[i] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi
             * (float) i / (float) (hann_.size() - 1));
     spectrumDb_.fill(-96.0f);
 
-    // Sections follow the engine's signal chain (see pageOf above), so every
-    // tab lists its groups in processing order.
+    // 分区顺序跟随引擎信号链（见上面的 pageOf），所以每个页签里的
+    // 分组都按处理顺序排列。
     addGroup("groupConv", { "convEnable", "convCrossChannel" });
     addGroup("groupDdc", { "ddcEnable" });
     addGroup("groupVHE", { "vheEnable", "vheQuality" });
@@ -99,12 +98,12 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
             processor_.getParametersState(), v4h::EqCurve::Mode::Dynamic);
         pg.curve->setSpectrum(spectrumDb_.data());
         pg.curve->setLiveGains(deGainDb_);
-        // Clicking a node on the graph switches the detail rows to that band.
+        // 点击图上的节点会把详情行切到那个频段。
         pg.curve->onSelect = [this](int band) { selectDeBand(band); };
         pg.group.addAndMakeVisible(*pg.curve);
         for (auto& row : pg.rows)
             if (!row->isEnable && row->paramId != "deBandCount")
-                deBandRows_.push_back(row.get()); // creation order == bind order
+                deBandRows_.push_back(row.get()); // 创建顺序 == 绑定顺序
     }
 
     addGroup("groupField", { "fieldEnable", "fieldWidening", "fieldMidImage", "fieldDepth" });
@@ -118,14 +117,14 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         auto& pg = *addGroup("groupMbc", { "mbcEnable", "mbcBandCount" });
         pg.strip = std::make_unique<v4h::XoverStrip>(processor_.getParametersState());
         pg.strip->setBandGrDb(mbcGrDb_);
-        // Clicking a region selects that band; the detail rows follow.
+        // 点击某个区间选中该频段；详情行跟着切换。
         pg.strip->onSelect = [this](int band) { selectMbcBand(band); };
         pg.group.addAndMakeVisible(*pg.strip);
     }
 
     {
-        // One detail panel for the selected MBC band (titleEnable=false so
-        // mbcNEnable is a plain toggle row, not this group's fold switch).
+        // 选中 MBC 频段的详情面板（titleEnable=false，让 mbcNEnable 保持
+        // 普通开关行，而不是充当本分组的折叠开关）。
         static const char* suffixes[] = { "Enable", "Threshold", "Ratio", "Knee", "KneeAuto",
             "Gain", "GainAuto", "Attack", "AttackAuto", "Release", "ReleaseAuto", "KneeMulti",
             "MaxAttack", "MaxRelease", "Crest", "Adapt", "NoClip" };
@@ -134,13 +133,13 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
             ids.push_back(juce::String("mbc1") + s);
         auto& pg = *addGroup("groupMbcSel", ids, false);
         for (auto& row : pg.rows)
-            mbcBandRows_.push_back(row.get()); // creation order == bind order
+            mbcBandRows_.push_back(row.get()); // 创建顺序 == 绑定顺序
     }
 
     addGroup("groupFet", { "fetEnable", "fetThreshold", "fetRatio", "fetKnee", "fetKneeAuto",
         "fetGain", "fetGainAuto", "fetAttack", "fetAttackAuto", "fetRelease", "fetReleaseAuto",
         "fetKneeMulti", "fetMaxAttack", "fetMaxRelease", "fetCrest", "fetAdapt", "fetNoClip" });
-    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // FET compressor GR
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // FET 压缩器 GR
     groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
     addGroup("groupDs", { "dsEnable", "dsXLow", "dsXHigh", "dsYLow", "dsYHigh",
         "dsSideGainLow", "dsSideGainHigh", "dsStrength" });
@@ -160,10 +159,10 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addGroup("groupSpk", { "spkEnable" });
     addGroup("groupLufs", { "lufsEnable", "lufsTarget", "lufsMaxGain", "lufsSpeed" });
     addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
-    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // output limiter GR
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // 输出限幅器 GR
     groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
 
-    // Band-count params drive which band rows/groups are shown.
+    // 频段数参数决定显示哪些频段行/分组。
     for (const char* id : { "eqBandCount", "deBandCount", "mbcBandCount" })
     {
         bandCountAttachments_.push_back(std::make_unique<juce::ParameterAttachment>(
@@ -179,7 +178,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         languageBox_.addItem(option.displayName, static_cast<int>(languageBox_.getNumItems()) + 1);
     languageBox_.onChange = [this] { selectLanguage(); };
 
-    // Presets & A/B compare: slot 0 starts as the live state, slot 1 its twin.
+    // 预设与 A/B 对比：槽位 0 从实时状态开始，槽位 1 是它的副本。
     abSlots_[0] = abSlots_[1] = processor_.getParametersState().copyState();
     for (int s = 0; s < 2; ++s)
     {
@@ -229,8 +228,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addAndMakeVisible(viewport_);
     setResizable(true, false);
     setResizeLimits(320, 240, 1920, 2160);
-    // Restore the remembered window size (saved by the timer ~1 s after the
-    // user stops dragging the border).
+    // 恢复记住的窗口尺寸（由定时器在用户停止拖拽边框约 1 秒后保存）。
     auto& uiState = processor_.getParametersState().state;
     setSize(
         juce::jlimit(320, 1920, (int) uiState.getProperty("uiWidth", defaultWidth)),
@@ -259,13 +257,13 @@ ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor()
     setLookAndFeel(nullptr);
 }
 
-// --- metering / spectrum ---------------------------------------------------
+// --- 电平 / 频谱 -----------------------------------------------------------
 
 void ViPER4HostAudioProcessorEditor::timerCallback()
 {
     pullMetersAndSpectrum();
 
-    // Persist the window size once it has settled for ~1 s.
+    // 窗口尺寸稳定约 1 秒后持久化。
     const std::array<int, 2> size = { getWidth(), getHeight() };
     if (size != savedSize_)
     {
@@ -296,7 +294,7 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
     for (int b = 0; b < 10; ++b)
         deGainDb_[b] = isOn("deEnable") ? m.deGainDb[(size_t) b].load() : 0.0f;
 
-    // Spectrum: grab the freshest 2048 mono samples, Hann -> FFT -> log bins.
+    // 频谱：取最新的 2048 个单声道样本，Hann 窗 -> FFT -> 对数频点。
     auto& fifo = processor_.spectrumFifo_;
     constexpr int fftSize = 2048;
     if (fifo.getNumReady() >= fftSize && processor_.getSampleRate() > 0.0)
@@ -322,7 +320,7 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
         const int nBins = fftSize / 2;
         const double binHz = processor_.getSampleRate() / fftSize;
         std::array<float, v4h::EqCurve::kSpectrumPoints> fresh{};
-        int bin = 1; // skip DC
+        int bin = 1; // 跳过 DC
         for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
         {
             const double fHi = 20.0 * std::pow(1000.0, (i + 1.0) / v4h::EqCurve::kSpectrumPoints);
@@ -331,16 +329,16 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
             for (; bin <= last && bin < nBins; ++bin)
                 mag = juce::jmax(mag, std::hypot(fftSamples_[(size_t) (2 * bin)],
                     fftSamples_[(size_t) (2 * bin + 1)]));
-            // Hann coherent gain ~0.5: /N/4 maps a full-scale sine to 0 dB.
+            // Hann 窗相干增益约 0.5：/N/4 使满幅正弦对应 0 dB。
             fresh[(size_t) i] = juce::jlimit(-96.0f, 6.0f,
                 20.0f * std::log10(mag / (float) (fftSize / 4) + 1e-6f));
         }
-        // Fast attack, ~2.5 dB per frame decay.
+        // 快速起音，每帧约 2.5 dB 衰减。
         for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
             spectrumDb_[(size_t) i] = juce::jmax(fresh[(size_t) i], spectrumDb_[(size_t) i] - 2.5f);
     }
 
-    // Push live data at the visible graphs and refresh them at this frame rate.
+    // 把实时数据推给可见的曲线图，并按当前帧率刷新它们。
     const double fs = processor_.getSampleRate();
     for (auto& pg : groups_)
     {
@@ -358,7 +356,7 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
     }
 }
 
-// --- presets & A/B ---------------------------------------------------------
+// --- 预设与 A/B ------------------------------------------------------------
 
 juce::File ViPER4HostAudioProcessorEditor::presetsDir() const
 {
@@ -398,7 +396,7 @@ void ViPER4HostAudioProcessorEditor::savePresetDialog()
         [this, window](int result) {
             if (result == 1)
             {
-                // Windows-invalid filename characters: replace, never reject.
+                // Windows 文件名的非法字符：替换，不拒绝。
                 auto name = window->getTextEditorContents("name").trim();
                 for (const char* p = "/\\:*?\"<>|"; *p != '\0'; ++p)
                     name = name.replaceCharacter(static_cast<juce::juce_wchar>(*p), '_');
@@ -439,13 +437,13 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     for (const auto& id : paramIds)
     {
         auto row = std::make_unique<ParamRow>();
-        // The group's "*Enable" switch lives in the group title bar...
+        // 分组的 "*Enable" 开关放在分组标题栏里……
         bindRow(*row, id, lang, id.endsWith("Enable") && titleEnable
             ? (juce::Component&) pg->group : content_, titleEnable);
         pg->rows.push_back(std::move(row));
     }
 
-    // The group's enable switch (if it has one) doubles as the fold control.
+    // 分组的启用开关（如果有）兼任折叠控件。
     if (titleEnable)
     {
         const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
@@ -472,8 +470,8 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     }
 
     pg->page = pageOf(groupId);
-    // Fold state comes from the enable switches (refreshCollapse); groups
-    // without one (groupMaster) default to open.
+    // 折叠状态来自启用开关（refreshCollapse）；没有开关的分组
+    // （groupMaster）默认展开。
 
     content_.addAndMakeVisible(pg->group);
     pg->group.toBack();
@@ -481,9 +479,9 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     return groups_.back().get();
 }
 
-// Row construction shared by addGroup and the select*Band rebinding helpers.
-// Attachments are rebuilt from scratch, so rebinding is just bindRow with a
-// new id. titleEnable=false keeps "*Enable" params as plain toggle rows.
+// addGroup 和 select*Band 重绑定助手共用的行构建逻辑。附着每次从零
+// 重建，所以重绑定就是用新 id 调一次 bindRow。titleEnable=false 时
+// "*Enable" 参数保持普通开关行。
 void ViPER4HostAudioProcessorEditor::bindRow(ParamRow& row, const juce::String& id,
     const juce::String& languageCode, juce::Component& parent, bool titleEnable)
 {
@@ -547,8 +545,8 @@ void ViPER4HostAudioProcessorEditor::selectMbcBand(int band)
         bindRow(*mbcBandRows_[i], pfx + suffixes[i], lang, content_, false);
 }
 
-// A folded group is just its title bar; the enable switch in that bar is the
-// only control. The MBC detail panel additionally follows mbcEnable.
+// 折叠的分组只剩标题栏；标题栏里的启用开关是唯一控件。MBC 详情面板
+// 还要额外跟随 mbcEnable。
 void ViPER4HostAudioProcessorEditor::refreshCollapse()
 {
     auto& apvts = processor_.getParametersState();
@@ -581,7 +579,7 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
     const int deN = bandCount("deBandCount") + 1;
     const int mbcN = bandCount("mbcBandCount") + 1;
 
-    // The EQ / MBC graphics follow the band counts.
+    // EQ / MBC 的图形跟随频段数变化。
     for (auto& pg : groups_)
     {
         const auto& gid = pg->groupId;
@@ -602,7 +600,7 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
         }
     }
     if (selectedDeBand_ >= deN)
-        selectDeBand(deN - 1); // detail rows follow the shrunken band count
+        selectDeBand(deN - 1); // 详情行跟随变小的频段数
     if (selectedMbcBand_ >= mbcN)
         selectMbcBand(mbcN - 1);
     resized();
@@ -669,7 +667,7 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
         pg->group.setText(tr(lang, pg->groupId));
         for (auto& row : pg->rows)
         {
-            if (row->isEnable) // switch in the title bar, no label
+            if (row->isEnable) // 开关在标题栏里，没有标签
                 continue;
             row->label.setText(tr(lang, labelKey(row->paramId)), juce::dontSendNotification);
             if (row->comboAttachment != nullptr)
@@ -687,7 +685,7 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
     }
 
     abCopy_.setButtonText(tr(lang, "abCopy"));
-    refreshPresetList(); // rebuilds the combo with translated preset names
+    refreshPresetList(); // 重建下拉框，带上已翻译的预设名
 }
 
 void ViPER4HostAudioProcessorEditor::resized()
@@ -696,7 +694,7 @@ void ViPER4HostAudioProcessorEditor::resized()
     auto headerArea = body.removeFromTop(headerHeight).reduced(gap, 0);
     titleLabel_.setBounds(headerArea.removeFromLeft(110));
 
-    // presets + A/B sit between the title and the language selector
+    // 预设 + A/B 排在标题和语言选择器之间
     presetBox_.setBounds(headerArea.removeFromLeft(160).withSizeKeepingCentre(156, 26));
     auto abArea = headerArea.removeFromLeft(112);
     abButtons_[0].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 24));
@@ -719,9 +717,8 @@ void ViPER4HostAudioProcessorEditor::resized()
 
     viewport_.setBounds(body.reduced(gap));
 
-    // Single column: each group spans the full content width. Content fills
-    // the viewport width (min 560, below that scroll sideways). Only groups
-    // on the current page are laid out.
+    // 单列布局：每个分组横跨整个内容宽度。内容填满视口宽度（最小 560，
+    // 更窄就横向滚动）。只布局当前页上的分组。
     const int contentWidth = juce::jmax(560, viewport_.getMaximumVisibleWidth());
     const int columnWidth = contentWidth - gap * 2;
 
@@ -739,9 +736,9 @@ void ViPER4HostAudioProcessorEditor::resized()
         pg->group.setVisible(show);
         if (!show)
         {
-            // Rows are content_ children, so hide them explicitly. The enable
-            // switch is a group child — group visibility already covers it,
-            // and touching it here would leave it hidden when we come back.
+            // 参数行是 content_ 的子控件，要显式隐藏。启用开关是分组的
+            // 子控件——分组可见性已经覆盖它，这里再动它的话，回来时
+            // 它会一直是隐藏的。
             for (auto& row : pg->rows)
                 if (!row->isEnable)
                     applyVis(*row, false);
@@ -751,7 +748,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         int rowCount = 0;
         for (auto& row : pg->rows)
         {
-            if (row->isEnable) // switch lives in the title bar, not the grid
+            if (row->isEnable) // 开关在标题栏里，不在网格里
                 continue;
             const bool on = !pg->collapsed;
             applyVis(*row, on);
@@ -760,7 +757,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         }
 
         const bool collapsed = pg->collapsed;
-        // Graphic strip (curve / crossover / field view) between title and rows.
+        // 图形条（曲线 / 分频条 / 场视图）放在标题和参数行之间。
         int graphicH = 0;
         if (pg->curve != nullptr)
         {
@@ -816,8 +813,8 @@ void ViPER4HostAudioProcessorEditor::resized()
             }
             if (pg->hasFileRow)
             {
-                // File row is a child of pg->group: bounds are group-relative,
-                // unlike the param rows which live in content_ coordinates.
+                // 文件行是 pg->group 的子控件：坐标相对分组，
+                // 而参数行在 content_ 坐标系里。
                 auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
                     columnWidth - 16, rowHeight).reduced(4, 1);
                 pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));

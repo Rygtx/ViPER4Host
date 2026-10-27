@@ -1,8 +1,7 @@
 #pragma once
 
-// Horizontal gain-reduction meter (FET compressor / output limiter). Fills
-// left-to-right as more reduction is applied; slim peak-hold tick marks the
-// recent maximum. 0..-24 dB range.
+// 横向增益衰减量表（FET 压缩器 / 输出限幅器）。衰减越多，填充越向右延伸；
+// 细长的峰值保持刻度线标出最近的最大值。量程 0..-24 dB。
 
 #include "Theme.h"
 
@@ -14,11 +13,11 @@ namespace v4h
 class GrMeter : public juce::Component
 {
 public:
-    GrMeter() = default; // the non-copyable macro below suppresses the implicit one
-    void setLevel(float reductionDb) // 0 = none, -24 = full scale
+    GrMeter() = default; // 下面的禁拷贝宏会连带屏蔽隐式默认构造
+    void setLevel(float reductionDb) // 0 = 无衰减，-24 = 满量程
     {
         current = juce::jlimit(0.0f, 24.0f, -reductionDb);
-        peak = juce::jmax(peak * 0.97f, current); // hold-and-fall
+        peak = juce::jmax(peak * 0.97f, current); // 峰值保持并缓慢回落
         repaint();
     }
 
@@ -37,7 +36,7 @@ public:
             juce::Rectangle<float>(r.getX() + 4.0f, r.getY(), 20.0f, r.getHeight()),
             juce::Justification::centredLeft);
 
-        // -6 / -12 / -18 dB ticks
+        // -6 / -12 / -18 dB 刻度
         for (int db = 6; db < 24; db += 6)
         {
             const float x = track.getX() + track.getWidth() * db / 24.0f;
