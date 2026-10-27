@@ -10,6 +10,10 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
 {
     formatManager_.registerBasicFormats();
     parameters_.state.setProperty("uiLanguage", v4h::localisation::systemLanguage(), nullptr);
+    // The global LocalisedStrings table would leak into a host's own JUCE
+    // strings, so only install it in the standalone app.
+    if (wrapperType == juce::AudioProcessor::wrapperType_Standalone)
+        v4h::localisation::applyJuceTranslations(getUiLanguage());
 }
 
 juce::String ViPER4HostAudioProcessor::getUiLanguage() const
@@ -20,6 +24,8 @@ juce::String ViPER4HostAudioProcessor::getUiLanguage() const
 void ViPER4HostAudioProcessor::setUiLanguage(const juce::String& languageCode)
 {
     parameters_.state.setProperty("uiLanguage", languageCode, nullptr);
+    if (wrapperType == juce::AudioProcessor::wrapperType_Standalone)
+        v4h::localisation::applyJuceTranslations(languageCode);
 }
 
 ViPER4HostAudioProcessor::~ViPER4HostAudioProcessor() = default;

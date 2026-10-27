@@ -85,4 +85,23 @@ juce::String systemLanguage()
     }
     return "en";
 }
+
+void applyJuceTranslations(const juce::String& languageCode)
+{
+    const auto lang = normaliseLanguageCode(languageCode);
+    const auto table = lang == "en" ? juce::var() : loadLanguage(lang).getProperty("juce", {});
+    auto* pairs = table.getDynamicObject();
+    if (pairs == nullptr)
+    {
+        juce::LocalisedStrings::setCurrentMappings(nullptr);
+        return;
+    }
+
+    // LocalisedStrings parses one "original"="translated" pair per line.
+    juce::StringArray items;
+    for (const auto& pair : pairs->getProperties())
+        items.add(pair.name.toString().quoted() + "=" + pair.value.toString().quoted());
+    juce::LocalisedStrings::setCurrentMappings(
+        new juce::LocalisedStrings(items.joinIntoString("\n"), false));
+}
 } // namespace v4h::localisation
