@@ -123,7 +123,7 @@ private:
     juce::Label titleLabel_;
     juce::Label languageLabel_;
     int currentPage_ = 0;
-    juce::TextButton pageButtons_[numPages];
+    v4h::TabButton pageButtons_[numPages];
     // ponytail: EQ APO 会在非消息线程删除编辑器；那一瞬间如果 ComboBox
     // 弹出菜单还开着，DropShadower 里会崩。已接受——与下面的 fileChooser_
     // 同一风险级别。真要出事就换成编辑器内下拉（纯子控件，不开弹窗）。

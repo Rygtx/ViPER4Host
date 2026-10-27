@@ -3,18 +3,18 @@
 
 namespace
 {
-constexpr int defaultWidth = 660;
-constexpr int defaultHeight = 600;
-constexpr int headerHeight = 40;
-constexpr int tabBarHeight = 28;
-constexpr int gap = 8;
+constexpr int defaultWidth = 700;
+constexpr int defaultHeight = 640;
+constexpr int headerHeight = 50;
+constexpr int tabBarHeight = 36;
+constexpr int gap = 10;
 constexpr int rowHeight = 30;
-constexpr int titleHeight = 24;
-constexpr int labelWidth = 130;
-constexpr int curveHeight = 210; // EQ / DynEQ 频响图
+constexpr int titleHeight = 30; // 与 Theme.h 卡片标题栏高度一致
+constexpr int labelWidth = 140;
+constexpr int curveHeight = 230; // EQ / DynEQ 频响图
 constexpr int stripHeight = 60;  // MBC 分频条
-constexpr int siViewHeight = 190; // 立体声声像器场视图
-constexpr int grMeterHeight = 26; // FET / 限幅器增益衰减量表
+constexpr int siViewHeight = 200; // 立体声声像器场视图
+constexpr int grMeterHeight = 30; // FET / 限幅器增益衰减量表
 
 // 分类页签，按顺序。数量必须与头文件里的 numPages 一致。
 const char* pageKeys[] = { "tabIn", "tabVhe", "tabEq", "tabStage", "tabDynamics",
@@ -834,21 +834,21 @@ void ViPER4HostAudioProcessorEditor::relabelEqBands()
 void ViPER4HostAudioProcessorEditor::resized()
 {
     auto body = getLocalBounds();
-    auto headerArea = body.removeFromTop(headerHeight).reduced(gap, 0);
-    titleLabel_.setBounds(headerArea.removeFromLeft(110));
+    auto headerArea = body.removeFromTop(headerHeight).reduced(gap + 4, 0);
+    titleLabel_.setBounds(headerArea.removeFromLeft(120));
 
     // 预设 + A/B 排在标题和语言选择器之间
-    presetBox_.setBounds(headerArea.removeFromLeft(160).withSizeKeepingCentre(156, 26));
-    auto abArea = headerArea.removeFromLeft(112);
-    abButtons_[0].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 24));
-    abArea.removeFromLeft(4);
-    abButtons_[1].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 24));
-    abArea.removeFromLeft(4);
-    abCopy_.setBounds(abArea.withSizeKeepingCentre(36, 24));
+    presetBox_.setBounds(headerArea.removeFromLeft(180).withSizeKeepingCentre(176, 28));
+    auto abArea = headerArea.removeFromLeft(3 * 34 + 2 * 6 + 8);
+    abButtons_[0].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 26));
+    abArea.removeFromLeft(6);
+    abButtons_[1].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 26));
+    abArea.removeFromLeft(6);
+    abCopy_.setBounds(abArea.withSizeKeepingCentre(42, 26));
 
-    auto langArea = headerArea.removeFromRight(90 + gap + 120);
-    languageLabel_.setBounds(langArea.removeFromLeft(90));
-    languageBox_.setBounds(langArea.withSizeKeepingCentre(120, 26));
+    auto langArea = headerArea.removeFromRight(96 + gap + 130);
+    languageLabel_.setBounds(langArea.removeFromLeft(96));
+    languageBox_.setBounds(langArea.withSizeKeepingCentre(126, 28));
 
     auto tabArea = body.removeFromTop(tabBarHeight).reduced(gap, 0);
     const int tabWidth = (tabArea.getWidth() - gap * (numPages - 1)) / numPages;
@@ -951,7 +951,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         pg->group.setBounds(gap, y, columnWidth, height);
         for (auto& row : pg->rows)
             if (row->isEnable)
-                row->toggle.setBounds(juce::Rectangle<int>(columnWidth - 48, 2, 40, 20));
+                row->toggle.setBounds(juce::Rectangle<int>(columnWidth - 46, 6, 38, 18));
 
         if (!collapsed)
         {
@@ -963,9 +963,9 @@ void ViPER4HostAudioProcessorEditor::resized()
                 auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
                 row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
                 if (row->buttonAttachment != nullptr)
-                    row->toggle.setBounds(rowBounds.removeFromRight(44).withSizeKeepingCentre(40, 20));
+                    row->toggle.setBounds(rowBounds.removeFromRight(46).withSizeKeepingCentre(38, 18));
                 else if (row->comboAttachment != nullptr)
-                    row->combo.setBounds(rowBounds.removeFromLeft(120));
+                    row->combo.setBounds(rowBounds.removeFromLeft(130));
                 else
                     row->slider.setBounds(rowBounds);
             }
@@ -976,7 +976,7 @@ void ViPER4HostAudioProcessorEditor::resized()
                 auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
                     columnWidth - 16, rowHeight).reduced(4, 1);
                 pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
-                pg->fileButton.setBounds(fileBounds.removeFromLeft(90).withSizeKeepingCentre(86, 24));
+                pg->fileButton.setBounds(fileBounds.removeFromLeft(94).withSizeKeepingCentre(90, 26));
                 pg->fileStatus.setBounds(fileBounds);
             }
         }
@@ -990,11 +990,20 @@ void ViPER4HostAudioProcessorEditor::resized()
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)
 {
     using namespace v4h::theme;
-    g.fillAll(c(background));
+    // 全窗自上而下的微渐变，避免大面积纯色发闷。
+    juce::ColourGradient bg(c(backgroundHi), 0.0f, 0.0f,
+        c(background), 0.0f, static_cast<float>(getHeight()), false);
+    g.setGradientFill(bg);
+    g.fillAll();
 
     auto strip = getLocalBounds().removeFromTop(headerHeight).toFloat();
     g.setColour(c(header));
     g.fillRect(strip);
-    g.setColour(c(accent));
-    g.fillRect(strip.removeFromBottom(2.0f));
+    // 顶栏底部：一条深色发丝线，上面叠一条向右淡出的青色高光。
+    g.setColour(juce::Colours::black.withAlpha(0.4f));
+    g.fillRect(0.0f, strip.getBottom() - 1.0f, static_cast<float>(getWidth()), 1.0f);
+    juce::ColourGradient line(c(accent).withAlpha(0.55f), 0.0f, strip.getBottom(),
+        c(accent).withAlpha(0.0f), static_cast<float>(getWidth()) * 0.55f, strip.getBottom(), false);
+    g.setGradientFill(line);
+    g.fillRect(0.0f, strip.getBottom() - 1.0f, static_cast<float>(getWidth()), 1.0f);
 }
