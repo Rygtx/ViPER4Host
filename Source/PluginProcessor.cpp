@@ -253,14 +253,14 @@ ViPER4HostAudioProcessor::createParameterLayout()
     // ViPER 低音
     addBool("bassEnable", "Bass Enable");
     addChoice("bassMode", "Bass Mode", { "Natural", "Pure Bass+", "Subwoofer" });
-    addFloat("bassFreq", "Bass Frequency", 15.0f, 150.0f, 70.0f, " Hz");
+    addFloat("bassFreq", "Bass Cutoff", 15.0f, 150.0f, 70.0f, " Hz");
     addFloat("bassGain", "Bass Gain", 0.5f, 10.0f, 0.5f, "x");
     addBool("bassAntiPop", "Bass Anti-Pop");
 
     // 低音单声道
     addBool("bassMonoEnable", "Bass Mono Enable");
     addChoice("bassMonoMode", "Bass Mono Mode", { "Natural", "Pure Bass+", "Subwoofer" });
-    addFloat("bassMonoFreq", "Bass Mono Frequency", 15.0f, 150.0f, 70.0f, " Hz");
+    addFloat("bassMonoFreq", "Bass Mono Cutoff", 15.0f, 150.0f, 70.0f, " Hz");
     addFloat("bassMonoGain", "Bass Mono Gain", 0.5f, 10.0f, 0.5f, "x");
     addBool("bassMonoAntiPop", "Bass Mono Anti-Pop");
 
