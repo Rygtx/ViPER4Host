@@ -45,3 +45,24 @@ cmake --build build --parallel
 - `Source/` — 插件源码
 - `extern/ViPERDSP` — DSP 引擎(子模块)
 - `extern/JUCE`、`extern/FST` — 框架与 VST2 头文件(子模块)
+
+## 鸣谢
+
+- [ViPERDSP](https://github.com/likelikeslike/ViPERDSP) — 原始上游 DSP 引擎,作者
+  [likelikeslike](https://github.com/likelikeslike)。本仓库的 `extern/ViPERDSP`
+  子模块使用其分支 [Rygtx/ViPERDSP](https://github.com/Rygtx/ViPERDSP)。
+- ViPER4Android 原作:Zhuhang 与 ViPER520。
+- 逆向工程:[Martmists](https://github.com/Martmists-GH)、[Iscle](https://github.com/iscle)
+  与 [likelikeslike](https://github.com/likelikeslike)
+  ([AndroidAudioMods/ViPERFX_RE](https://github.com/AndroidAudioMods/ViPERFX_RE)、
+  [likelikeslike/ViPERFX_RE](https://github.com/likelikeslike/ViPERFX_RE))。
+- [JUCE](https://juce.com/)(插件框架)与 [FST](https://git.iem.at/zmoelnig/FST)(VST2 兼容头文件)。
+
+## 许可证
+
+- 本仓库自有代码(`Source/`、构建脚本与文档)以 [GPL-3.0](LICENSE) 发布。
+- `extern/ViPERDSP` 引擎本身没有开源许可:代码逆向自 ViPER4Android,原知识产权
+  归 Zhuhang 与 ViPER520,仅限个人使用、禁止商用,详见其
+  [README](extern/ViPERDSP/README.md)。
+- `extern/JUCE` 采用 AGPLv3,`extern/FST` 采用 GPLv3,以各自仓库内的许可证
+  文本为准。
