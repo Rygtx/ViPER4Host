@@ -38,8 +38,19 @@ public:
     juce::String getUiLanguage() const;
     void setUiLanguage(const juce::String& languageCode);
 
-    // Mono output tap feeding the editor's spectrum analyzer (lock-free FIFO,
-    // written by the audio thread, polled on a UI timer).
+    // Live metering for the editor's curves and GR meters. Audio thread
+    // writes, message thread polls; plain atomics are the standard
+    // best-effort metering contract (a torn/stale frame is harmless).
+    struct Meters
+    {
+        std::atomic<float> fetGrDb{0.0f};
+        std::atomic<float> limiterGrDb{0.0f};
+        std::atomic<float> mbcGrDb[5]{{0.0f}, {0.0f}, {0.0f}, {0.0f}, {0.0f}};
+        std::atomic<float> deGainDb[10]{{0.0f}, {0.0f}, {0.0f}, {0.0f}, {0.0f},
+            {0.0f}, {0.0f}, {0.0f}, {0.0f}, {0.0f}};
+    };
+    Meters meters_;
+    // Mono output tap feeding the editor's spectrum analyzer.
     juce::AbstractFifo spectrumFifo_{16384};
     float spectrumBuffer_[16384]{};
 

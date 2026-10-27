@@ -7,9 +7,10 @@
 // Dynamic mode draws the summed RBJ biquad magnitude of every band; Graphic
 // mode mirrors the engine's own bandpass-section math (MinPhaseIIRCoeffs),
 // normalised so the flat setting sits at 0 dB.
-// The editor feeds an output spectrum in through a raw pointer (drawn under
-// the curve). Arrows nudge the selected band (Shift = coarse); Alt+drag /
-// Ctrl+wheel adjusts Q in Dynamic mode.
+// The editor feeds live data in through raw pointers: an output spectrum
+// (drawn under the curve) and per-band applied gains (Dynamic mode ghost
+// dots showing the dynamics at work). Arrows nudge the selected band
+// (Shift = coarse); Alt+drag / Ctrl+wheel adjusts Q in Dynamic mode.
 
 #include "Theme.h"
 
@@ -36,6 +37,7 @@ public:
     // Live data from the editor (may be null until the timer feeds them).
     static constexpr int kSpectrumPoints = 128;
     void setSpectrum(const float* db) { spectrumDb = db; }
+    void setLiveGains(const float* db) { liveGainDb = db; }
     void setSampleRate(double fs)
     {
         if (fs > 0.0 && fs != fsDraw)
@@ -509,6 +511,21 @@ private:
             g.drawEllipse(x - 5.5f, y - 5.5f, 11.0f, 11.0f, 1.6f);
         }
 
+        // Dynamic-mode ghost dots: where the dynamics currently push each band
+        if (mode == Mode::Dynamic && liveGainDb != nullptr)
+        {
+            for (int b = 0; b < bandCount; ++b)
+            {
+                const float live = liveGainDb[b];
+                if (std::abs(live - bs[(size_t) b].g) < 0.3f)
+                    continue;
+                const float x = xOf(bs[(size_t) b].f), y = yOf(live);
+                g.setColour(c(accent).withAlpha(0.7f));
+                g.drawLine(x, yOf(bs[(size_t) b].g), x, y, 1.5f);
+                g.fillEllipse(x - 3.5f, y - 3.5f, 7.0f, 7.0f);
+            }
+        }
+
         // readout for the active band
         const int rb = dragBand >= 0 ? dragBand
             : hover >= 0             ? hover
@@ -626,6 +643,7 @@ private:
     int bandCount = 0, selected = 0, hover = -1, dragBand = -1;
     float qAtDragStart = 1.0f, yAtDragStart = 0.0f;
     const float* spectrumDb = nullptr; // editor-owned, kSpectrumPoints entries
+    const float* liveGainDb = nullptr; // editor-owned, one per DynEQ band
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EqCurve)

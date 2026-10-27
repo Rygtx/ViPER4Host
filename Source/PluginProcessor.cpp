@@ -2,6 +2,8 @@
 #include "PluginEditor.h"
 #include "Localisation.h"
 
+#include <cmath>
+
 ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     : AudioProcessor(BusesProperties()
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
@@ -377,9 +379,20 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         engine_.Process(interleaved_, static_cast<uint32_t>(numFrames));
     }
 
-    // Mono spectrum tap for the editor: downmix + push into the lock-free
-    // FIFO; the UI polls it on a timer. Best-effort by design.
+    // Metering + mono spectrum tap for the editor. Best-effort: the UI polls
+    // these on a timer, and a stale or torn frame is harmless.
     {
+        constexpr float kRawToDb = 1.0f / 0.1151293f; // engine log domain -> dB
+        meters_.fetGrDb.store(-engine_.GetFetGainReduction() * kRawToDb);
+        meters_.limiterGrDb.store(
+            engine_.GetLimiterGain() > 0.0f ? -20.0f * std::log10(engine_.GetLimiterGain()) : 0.0f);
+        for (int b = 0; b < 5; ++b)
+            meters_.mbcGrDb[static_cast<size_t>(b)].store(
+                -engine_.GetMultibandBandGainReduction(b) * kRawToDb);
+        for (int b = 0; b < 10; ++b)
+            meters_.deGainDb[static_cast<size_t>(b)].store(
+                engine_.GetDynamicEqBandAppliedGainDb(b));
+
         int start1, size1, start2, size2;
         spectrumFifo_.prepareToWrite(numFrames, start1, size1, start2, size2);
         for (int i = 0; i < size1; ++i)
@@ -390,6 +403,15 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             spectrumBuffer_[static_cast<size_t>(start2 + i)]
                 = (interleaved_[static_cast<size_t>(size1 + i) * 2]
                       + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
+    }
+    if (bypassed) // frozen meters on the editor would read as "still working"
+    {
+        meters_.fetGrDb.store(0.0f);
+        meters_.limiterGrDb.store(0.0f);
+        for (auto& g : meters_.mbcGrDb)
+            g.store(0.0f);
+        for (auto& g : meters_.deGainDb)
+            g.store(0.0f);
     }
 
     float* outLeft = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;

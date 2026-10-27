@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EqCurve.h"
+#include "GrMeter.h"
 #include "PluginProcessor.h"
 #include "SiView.h"
 #include "Theme.h"
@@ -60,6 +61,8 @@ private:
         // Same slot for the MBC crossover strip and the stereo imager view.
         std::unique_ptr<v4h::XoverStrip> strip;
         std::unique_ptr<v4h::SiView> siView;
+        // Horizontal GR meter (FET compressor / output limiter groups).
+        std::unique_ptr<v4h::GrMeter> grMeter;
         // First "*Enable" param of the group, if any: the switch doubles as
         // the fold control (off = title bar only) and refreshCollapse() runs
         // whenever it changes.
@@ -98,8 +101,8 @@ private:
     void selectLanguage();
     void pickFile(ParamGroup& group);
     void refreshFileStatus(ParamGroup& group);
-    // 30 Hz: polls the spectrum FIFO, re-runs the FFT and repaints the
-    // visible EQ graphs.
+    // 30 Hz metering: polls processor meters, re-runs the spectrum FFT and
+    // repaints the visible graphs / GR meters.
     void pullMetersAndSpectrum();
     // Presets & A/B compare.
     juce::File presetsDir() const;
@@ -142,6 +145,9 @@ private:
     std::array<float, 4096> fftSamples_{};
     std::array<float, 2048> hann_{};
     std::array<float, v4h::EqCurve::kSpectrumPoints> spectrumDb_{};
+    // Meter snapshots the graphs read while painting.
+    float mbcGrDb_[5]{};
+    float deGainDb_[10]{};
     int resizeIdleTicks_ = -1; // -1 = size saved; counts up after a resize
     std::array<int, 2> savedSize_{660, 600};
 

@@ -22,6 +22,7 @@ constexpr uint32_t accentBright = 0xff7ce8db;
 constexpr uint32_t text = 0xffc9cdd6;
 constexpr uint32_t textBright = 0xffedeff4;
 constexpr uint32_t textDim = 0xff878d99;
+constexpr uint32_t gr = 0xfffb923c; // gain-reduction amber (industry convention)
 
 inline juce::Colour c(uint32_t v) { return juce::Colour(v); }
 } // namespace theme

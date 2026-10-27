@@ -14,6 +14,7 @@ constexpr int labelWidth = 130;
 constexpr int curveHeight = 210; // EQ / DynEQ response graph
 constexpr int stripHeight = 60;  // MBC crossover strip
 constexpr int siViewHeight = 190; // stereo imager field view
+constexpr int grMeterHeight = 26; // FET / limiter gain-reduction meter
 
 // Category tabs, in order. Count must match numPages in the header.
 const char* pageKeys[] = { "tabOutput", "tabDynamics", "tabEq", "tabBass", "tabStage", "tabFx" };
@@ -68,11 +69,15 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 
     // Sections in the same order as the parameter layout.
     addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // output limiter GR
+    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
     addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
     addGroup("groupLufs", { "lufsEnable", "lufsTarget", "lufsMaxGain", "lufsSpeed" });
     addGroup("groupFet", { "fetEnable", "fetThreshold", "fetRatio", "fetKnee", "fetKneeAuto",
         "fetGain", "fetGainAuto", "fetAttack", "fetAttackAuto", "fetRelease", "fetReleaseAuto",
         "fetKneeMulti", "fetMaxAttack", "fetMaxRelease", "fetCrest", "fetAdapt", "fetNoClip" });
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // FET compressor GR
+    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
 
     {
         auto& pg = *addGroup("groupEq", { "eqEnable", "eqBandCount" });
@@ -88,6 +93,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         pg.curve = std::make_unique<v4h::EqCurve>(
             processor_.getParametersState(), v4h::EqCurve::Mode::Dynamic);
         pg.curve->setSpectrum(spectrumDb_.data());
+        pg.curve->setLiveGains(deGainDb_);
         // Clicking a node on the graph switches the detail rows to that band.
         pg.curve->onSelect = [this](int band) { selectDeBand(band); };
         pg.group.addAndMakeVisible(*pg.curve);
@@ -118,6 +124,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     {
         auto& pg = *addGroup("groupMbc", { "mbcEnable", "mbcBandCount" });
         pg.strip = std::make_unique<v4h::XoverStrip>(processor_.getParametersState());
+        pg.strip->setBandGrDb(mbcGrDb_);
         // Clicking a region selects that band; the detail rows follow.
         pg.strip->onSelect = [this](int band) { selectMbcBand(band); };
         pg.group.addAndMakeVisible(*pg.strip);
@@ -257,6 +264,19 @@ void ViPER4HostAudioProcessorEditor::timerCallback()
 
 void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
 {
+    auto& m = processor_.meters_;
+    const auto isOn = [this](const char* id) {
+        auto* p = processor_.getParametersState().getParameter(id);
+        return p != nullptr && p->getValue() > 0.5f;
+    };
+    const float fetGr = isOn("fetEnable") ? m.fetGrDb.load() : 0.0f;
+    const float limGr = m.limiterGrDb.load();
+    const bool mbcOn = isOn("mbcEnable");
+    for (int b = 0; b < 5; ++b)
+        mbcGrDb_[b] = mbcOn ? m.mbcGrDb[(size_t) b].load() : 0.0f;
+    for (int b = 0; b < 10; ++b)
+        deGainDb_[b] = isOn("deEnable") ? m.deGainDb[(size_t) b].load() : 0.0f;
+
     // Spectrum: grab the freshest 2048 mono samples, Hann -> FFT -> log bins.
     auto& fifo = processor_.spectrumFifo_;
     constexpr int fftSize = 2048;
@@ -301,18 +321,21 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
             spectrumDb_[(size_t) i] = juce::jmax(fresh[(size_t) i], spectrumDb_[(size_t) i] - 2.5f);
     }
 
-    // Refresh the visible EQ graphs at this frame rate (spectrum animation);
-    // other components repaint themselves via parameter attachments.
+    // Push live data at the visible graphs and refresh them at this frame rate.
     const double fs = processor_.getSampleRate();
     for (auto& pg : groups_)
     {
         if (!pg->visible || pg->page != currentPage_ || pg->collapsed)
             continue;
+        if (pg->grMeter != nullptr)
+            pg->grMeter->setLevel(pg->groupId == "groupFet" ? fetGr : limGr);
         if (pg->curve != nullptr)
         {
             pg->curve->setSampleRate(fs);
             pg->curve->repaint();
         }
+        if (pg->strip != nullptr)
+            pg->strip->repaint();
     }
 }
 
@@ -732,6 +755,13 @@ void ViPER4HostAudioProcessorEditor::resized()
             pg->siView->setVisible(graphicH != 0);
             if (graphicH != 0)
                 pg->siView->setBounds(8, titleHeight, columnWidth - 16, siViewHeight);
+        }
+        else if (pg->grMeter != nullptr)
+        {
+            graphicH = !collapsed ? grMeterHeight : 0;
+            pg->grMeter->setVisible(graphicH != 0);
+            if (graphicH != 0)
+                pg->grMeter->setBounds(8, titleHeight, columnWidth - 16, grMeterHeight);
         }
         const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
         const int height = titleHeight + (collapsed ? 0 : graphicH + rowCount * rowHeight + fileRowHeight);

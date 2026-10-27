@@ -46,6 +46,9 @@ public:
         repaint();
     }
 
+    // Live per-band gain reduction (negative dB) from the editor's meters.
+    void setBandGrDb(const float* gr) { bandGrDb = gr; }
+
     std::function<void(int)> onSelect;
 
 private:
@@ -227,6 +230,17 @@ private:
                 g.setColour(c(accent).withAlpha(0.12f));
                 g.fillRect(lo, b.getY(), hi - lo, b.getHeight());
             }
+            // live gain-reduction bar for this band (0..-24 dB -> bar height)
+            if (bandGrDb != nullptr)
+            {
+                const float gr = juce::jlimit(0.0f, 24.0f, -bandGrDb[band]);
+                const float h = gr / 24.0f * (b.getHeight() - 8.0f);
+                if (h > 1.0f)
+                {
+                    g.setColour(c(gr));
+                    g.fillRect((lo + hi) * 0.5f - 3.0f, b.getBottom() - 4.0f - h, 6.0f, h);
+                }
+            }
             g.setColour(band == selected ? c(accentBright) : c(textDim));
             g.drawText(juce::String(band + 1), juce::Rectangle<float>(lo, b.getY(), hi - lo, b.getHeight()),
                 juce::Justification::centred);
@@ -256,6 +270,7 @@ private:
 
     juce::AudioProcessorValueTreeState& apvts;
     int bandCount = 0, selected = 0, hoverBand = -1, hoverCross = -1, dragCross = -1;
+    const float* bandGrDb = nullptr;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(XoverStrip)
