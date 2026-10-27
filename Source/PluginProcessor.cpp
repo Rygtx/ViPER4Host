@@ -16,6 +16,21 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     // strings, so only install it in the standalone app.
     if (wrapperType == juce::AudioProcessor::wrapperType_Standalone)
         v4h::localisation::applyJuceTranslations(getUiLanguage());
+
+#if JUCE_DEBUG
+    // Self-checks for the parsing this file owns; a wrong layout compiles
+    // fine and only sounds wrong, so pin it at startup (debug builds).
+    {
+        std::vector<viper::BiquadSection> lo, hi;
+        // Layout: 5 floats per section, first half 44.1 kHz, second half 48 kHz.
+        const bool ok = parseDdcText(
+            "0 1 2 3 4 5 6 7 8 9 20 21 22 23 24 25 26 27 28 29", lo, hi);
+        jassert(ok && lo.size() == 2 && hi.size() == 2
+            && lo[0][0] == 0.0f && lo[1][0] == 5.0f
+            && hi[0][0] == 20.0f && hi[1][0] == 25.0f);
+        jassert(!parseDdcText("1 2 3 4 5", lo, hi)); // too short
+    }
+#endif
 }
 
 juce::String ViPER4HostAudioProcessor::getUiLanguage() const
@@ -37,8 +52,10 @@ namespace
 // FET/MBC compressor thresholds and knees live in the natural-log domain:
 // raw = dB * ln(10)/20. Ratios are stored as the signed slope -1/R.
 constexpr float kDbToLog = 0.1151293f;
-float dbToRaw(float db) { return db * kDbToLog; }
-float ratioToRaw(float ratio) { return -1.0f / ratio; }
+constexpr float dbToRaw(float db) { return db * kDbToLog; }
+constexpr float ratioToRaw(float ratio) { return -1.0f / ratio; }
+static_assert(dbToRaw(0.0f) == 0.0f && dbToRaw(-6.0f) < -0.69f && dbToRaw(-6.0f) > -0.70f);
+static_assert(ratioToRaw(2.0f) == -0.5f);
 
 // Every sub-struct has operator==; compare all blocks so unwired params can't
 // silently skip re-apply. Lives host-side to keep the ViPERDSP submodule
@@ -69,6 +86,42 @@ bool paramsDiffer(const viper::ViPERParams& a, const viper::ViPERParams& b)
         && a.speaker_correction == b.speaker_correction
         && a.multiband_compressor == b.multiband_compressor
         && a.dynamic_eq == b.dynamic_eq);
+}
+
+// ponytail: assumes the ViPER4Windows .ddc text layout — whitespace
+// separated biquad sections of 5 floats, first half for 44.1 kHz, second
+// half for 48 kHz. Add a header-aware parser if real files disagree.
+bool parseDdcText(const juce::String& text,
+    std::vector<viper::BiquadSection>& sections44100,
+    std::vector<viper::BiquadSection>& sections48000)
+{
+    juce::StringArray tokens;
+    tokens.addTokens(text, " \r\n\t,", "");
+    std::vector<float> values;
+    values.reserve(static_cast<size_t>(tokens.size()));
+    for (const auto& t : tokens)
+        if (t.trim().isNotEmpty())
+            values.push_back(t.getFloatValue());
+
+    if (values.size() < 10 || values.size() % 10 != 0)
+        return false;
+
+    const size_t half = values.size() / 2;
+    const size_t sections = half / 5;
+    sections44100.clear();
+    sections48000.clear();
+    for (size_t s = 0; s < sections; ++s)
+    {
+        viper::BiquadSection lo{}, hi{};
+        for (int k = 0; k < 5; ++k)
+        {
+            lo[static_cast<size_t>(k)] = values[s * 5 + static_cast<size_t>(k)];
+            hi[static_cast<size_t>(k)] = values[half + s * 5 + static_cast<size_t>(k)];
+        }
+        sections44100.push_back(lo);
+        sections48000.push_back(hi);
+    }
+    return true;
 }
 } // namespace
 
@@ -384,8 +437,9 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     {
         constexpr float kRawToDb = 1.0f / 0.1151293f; // engine log domain -> dB
         meters_.fetGrDb.store(-engine_.GetFetGainReduction() * kRawToDb);
+        // Negative dB = reduction, same convention as fetGrDb (GrMeter negates).
         meters_.limiterGrDb.store(
-            engine_.GetLimiterGain() > 0.0f ? -20.0f * std::log10(engine_.GetLimiterGain()) : 0.0f);
+            engine_.GetLimiterGain() > 0.0f ? 20.0f * std::log10(engine_.GetLimiterGain()) : 0.0f);
         for (int b = 0; b < 5; ++b)
             meters_.mbcGrDb[static_cast<size_t>(b)].store(
                 -engine_.GetMultibandBandGainReduction(b) * kRawToDb);
@@ -627,38 +681,15 @@ juce::String ViPER4HostAudioProcessor::loadConvolverFile(const juce::String& pat
 
 juce::String ViPER4HostAudioProcessor::loadDdcFile(const juce::String& path)
 {
-    auto text = juce::File(path).loadFileAsString();
-    if (text.isEmpty())
+    const juce::File file(path);
+    // ponytail: cap DDC text at 4 MB; larger picks are almost always a wrong file.
+    if (!file.existsAsFile() || file.getSize() > 4 * 1024 * 1024)
         return "ddcErrRead";
 
-    juce::StringArray tokens;
-    tokens.addTokens(text, " \r\n\t,", "");
-    std::vector<float> values;
-    values.reserve(static_cast<size_t>(tokens.size()));
-    for (const auto& t : tokens)
-        if (t.trim().isNotEmpty())
-            values.push_back(t.getFloatValue());
-
-    // ponytail: assumes the ViPER4Windows .ddc text layout — whitespace
-    // separated biquad sections of 5 floats, first half for 44.1 kHz, second
-    // half for 48 kHz. Add a header-aware parser if real files disagree.
-    if (values.size() < 10 || values.size() % 10 != 0)
+    auto ddc = std::make_shared<PendingDdc>();
+    if (!parseDdcText(file.loadFileAsString(), ddc->sections44100, ddc->sections48000))
         return "ddcErrFormat";
 
-    const size_t half = values.size() / 2;
-    const size_t sections = half / 5;
-    auto ddc = std::make_shared<PendingDdc>();
-    for (size_t s = 0; s < sections; ++s)
-    {
-        viper::BiquadSection lo{}, hi{};
-        for (int k = 0; k < 5; ++k)
-        {
-            lo[static_cast<size_t>(k)] = values[s * 5 + static_cast<size_t>(k)];
-            hi[static_cast<size_t>(k)] = values[half + s * 5 + static_cast<size_t>(k)];
-        }
-        ddc->sections44100.push_back(lo);
-        ddc->sections48000.push_back(hi);
-    }
     {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingDdc_ = std::move(ddc);

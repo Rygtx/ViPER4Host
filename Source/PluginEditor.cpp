@@ -379,13 +379,21 @@ void ViPER4HostAudioProcessorEditor::savePresetDialog()
         [this, window](int result) {
             if (result == 1)
             {
-                const auto name = window->getTextEditorContents("name").trim();
+                // Windows-invalid filename characters: replace, never reject.
+                auto name = window->getTextEditorContents("name").trim();
+                for (const char* p = "/\\:*?\"<>|"; *p != '\0'; ++p)
+                    name = name.replaceCharacter(static_cast<juce::juce_wchar>(*p), '_');
                 if (name.isNotEmpty())
                 {
                     auto xml = processor_.getParametersState().copyState().createXml();
                     xml->setAttribute("presetName", name);
-                    xml->writeTo(presetsDir().getChildFile(name + ".xml"));
-                    refreshPresetList();
+                    if (xml->writeTo(presetsDir().getChildFile(name + ".xml")))
+                        refreshPresetList();
+                    else
+                        juce::AlertWindow::showMessageBoxAsync(
+                            juce::MessageBoxIconType::WarningIcon,
+                            v4h::localisation::tr(processor_.getUiLanguage(), "presetSave"),
+                            v4h::localisation::tr(processor_.getUiLanguage(), "presetSaveFailed"));
                 }
             }
         }),
@@ -726,7 +734,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         {
             if (row->isEnable) // switch lives in the title bar, not the grid
                 continue;
-            const bool on = row->bandVisible && !pg->collapsed;
+            const bool on = !pg->collapsed;
             applyVis(*row, on);
             if (on)
                 ++rowCount;

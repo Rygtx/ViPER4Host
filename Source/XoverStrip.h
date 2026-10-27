@@ -40,12 +40,6 @@ public:
         repaint();
     }
 
-    void setSelected(int band)
-    {
-        selected = juce::jlimit(0, bandCount - 1, band);
-        repaint();
-    }
-
     // Live per-band gain reduction (negative dB) from the editor's meters.
     void setBandGrDb(const float* gr) { bandGrDb = gr; }
 
@@ -167,7 +161,6 @@ private:
     void mouseMove(const juce::MouseEvent& e) override
     {
         hoverCross = dragCross > 0 ? dragCross : pickHandle(e.position);
-        hoverBand = hoverCross > 0 ? -1 : pickBand(e.position);
         setMouseCursor(hoverCross > 0 ? juce::MouseCursor::LeftRightResizeCursor
                                       : juce::MouseCursor::PointingHandCursor);
         repaint();
@@ -175,7 +168,7 @@ private:
 
     void mouseExit(const juce::MouseEvent&) override
     {
-        hoverBand = hoverCross = -1;
+        hoverCross = -1;
         repaint();
     }
 
@@ -186,18 +179,6 @@ private:
             return;
         if (auto* p = rp("mbcCross" + juce::String(c)))
             p->setValueNotifyingHost(p->getDefaultValue());
-    }
-
-    static juce::String freqText(float f)
-    {
-        if (f >= 1000.0f)
-        {
-            auto s = juce::String(f / 1000.0f, 2);
-            while (s.containsChar('.') && (s.endsWithChar('0') || s.endsWithChar('.')))
-                s = s.dropLastCharacters(1);
-            return s + " kHz";
-        }
-        return juce::String(juce::roundToInt(f)) + " Hz";
     }
 
     void paint(juce::Graphics& g) override
@@ -214,7 +195,7 @@ private:
         {
             const float x = xOf(fTicks[i]);
             g.setColour(c(outline));
-            g.fillRect(x, b.getY(), 1.0f, b.getHeight());
+            g.fillRect(juce::Rectangle<float>(x, b.getY(), 1.0f, b.getHeight()));
             g.setColour(c(textDim));
             g.drawText(fLabels[i], juce::Rectangle<float>(x - 20.0f, b.getBottom(), 40.0f, 13.0f),
                 juce::Justification::centred);
@@ -228,17 +209,17 @@ private:
             if (band == selected)
             {
                 g.setColour(c(accent).withAlpha(0.12f));
-                g.fillRect(lo, b.getY(), hi - lo, b.getHeight());
+                g.fillRect(juce::Rectangle<float>(lo, b.getY(), hi - lo, b.getHeight()));
             }
             // live gain-reduction bar for this band (0..-24 dB -> bar height)
             if (bandGrDb != nullptr)
             {
-                const float gr = juce::jlimit(0.0f, 24.0f, -bandGrDb[band]);
-                const float h = gr / 24.0f * (b.getHeight() - 8.0f);
+                const float grDb = juce::jlimit(0.0f, 24.0f, -bandGrDb[band]);
+                const float h = grDb / 24.0f * (b.getHeight() - 8.0f);
                 if (h > 1.0f)
                 {
                     g.setColour(c(gr));
-                    g.fillRect((lo + hi) * 0.5f - 3.0f, b.getBottom() - 4.0f - h, 6.0f, h);
+                    g.fillRect(juce::Rectangle<float>((lo + hi) * 0.5f - 3.0f, b.getBottom() - 4.0f - h, 6.0f, h));
                 }
             }
             g.setColour(band == selected ? c(accentBright) : c(textDim));
@@ -252,7 +233,7 @@ private:
             const float x = xOf(crossValue(cros));
             const bool active = cros == dragCross || cros == hoverCross;
             g.setColour(active ? c(accentBright) : c(textBright));
-            g.fillRect(x - 1.0f, b.getY() + 3.0f, 2.0f, b.getHeight() - 6.0f);
+            g.fillRect(juce::Rectangle<float>(x - 1.0f, b.getY() + 3.0f, 2.0f, b.getHeight() - 6.0f));
             g.fillEllipse(x - 4.5f, b.getCentreY() - 4.5f, 9.0f, 9.0f);
             g.setColour(c(accent));
             g.drawEllipse(x - 4.5f, b.getCentreY() - 4.5f, 9.0f, 9.0f, 1.4f);
@@ -263,13 +244,14 @@ private:
         if (rb > 0)
         {
             g.setColour(c(textBright));
-            g.drawText(freqText(crossValue(rb)), b.getX(), 0.0f, b.getWidth(), (float) b.getY() + 2.0f,
+            g.drawText(freqText(crossValue(rb)),
+                juce::Rectangle<float>(b.getX(), 0.0f, b.getWidth(), b.getY() + 2.0f),
                 juce::Justification::centredRight);
         }
     }
 
     juce::AudioProcessorValueTreeState& apvts;
-    int bandCount = 0, selected = 0, hoverBand = -1, hoverCross = -1, dragCross = -1;
+    int bandCount = 0, selected = 0, hoverCross = -1, dragCross = -1;
     const float* bandGrDb = nullptr;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 

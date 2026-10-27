@@ -217,6 +217,10 @@
     "mbcBandNoClip": "No Clip",
     "chooseFile": "Choose file...",
     "noFile": "Not loaded",
+    "convErrRead": "Could not read the impulse response file.",
+    "ddcErrRead": "Could not read the DDC file.",
+    "ddcErrFormat": "Unrecognized DDC file format.",
+    "presetSaveFailed": "Could not save the preset.",
     "bypass": "Bypass"
   }
 }

@@ -72,17 +72,17 @@ public:
         repaint();
     }
 
-    void setSelected(int band)
-    {
-        selected = juce::jlimit(0, bandCount - 1, band);
-        repaint();
-    }
-
     // Fired when the user picks a node in Dynamic mode; the editor rebinds its
     // per-band detail rows to the selected band.
     std::function<void(int)> onSelect;
 
-    struct Band; // defined in the private section below
+    // Cached snapshot per paint / drag hit test. Public because the
+    // engine-faithful response math below takes vectors of it.
+    struct Band
+    {
+        double f = 1000.0, g = 0.0, q = 1.0;
+        int type = 0;
+    };
 
     // --- engine-faithful Graphic response ----------------------------------
     // Mirrors ViPERDSP: each band is a fixed bandpass biquad (coefficients
@@ -186,12 +186,6 @@ private:
             default: return f31;
         }
     }
-
-    struct Band // cached snapshot per paint / drag hit test
-    {
-        double f = 1000.0, g = 0.0, q = 1.0;
-        int type = 0;
-    };
 
     std::vector<Band> snapshot() const
     {
@@ -449,7 +443,7 @@ private:
         {
             const float x = xOf(fTicks[i]);
             g.setColour(c(outline));
-            g.fillRect(x, p.getY(), 1.0f, p.getHeight());
+            g.fillRect(juce::Rectangle<float>(x, p.getY(), 1.0f, p.getHeight()));
             g.setColour(c(textDim));
             g.drawText(fLabels[i], juce::Rectangle<float>(x - 20.0f, p.getBottom() + 1.0f,
                 40.0f, 12.0f), juce::Justification::centred);
@@ -458,7 +452,7 @@ private:
         {
             const float y = yOf(db);
             g.setColour(db == 0 ? c(outline).brighter(0.25f) : c(outline));
-            g.fillRect(p.getX(), y, p.getWidth(), 1.0f);
+            g.fillRect(juce::Rectangle<float>(p.getX(), y, p.getWidth(), 1.0f));
             if (db != 0)
             {
                 g.setColour(c(textDim));
@@ -541,18 +535,6 @@ private:
             g.drawText(readout, juce::Rectangle<float>(p.getX(), p.getY() + 2.0f,
                 p.getWidth() - 4.0f, 14.0f), juce::Justification::centredRight);
         }
-    }
-
-    static juce::String freqText(float f)
-    {
-        if (f >= 1000.0f)
-        {
-            auto s = juce::String(f / 1000.0f, 2);
-            while (s.containsChar('.') && (s.endsWithChar('0') || s.endsWithChar('.')))
-                s = s.dropLastCharacters(1);
-            return s + " kHz";
-        }
-        return juce::String(juce::roundToInt(f)) + " Hz";
     }
 
     // One RBJ biquad section's magnitude in dB at frequency f.

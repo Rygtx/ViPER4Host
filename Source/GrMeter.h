@@ -33,7 +33,8 @@ public:
             .withY(r.getCentreY() - 4.0f).withHeight(8.0f);
         g.setFont(juce::Font(juce::FontOptions(10.0f)));
         g.setColour(c(textDim));
-        g.drawText("GR", r.getX() + 4.0f, r.getY(), 20.0f, r.getHeight(),
+        g.drawText("GR",
+            juce::Rectangle<float>(r.getX() + 4.0f, r.getY(), 20.0f, r.getHeight()),
             juce::Justification::centredLeft);
 
         // -6 / -12 / -18 dB ticks
@@ -41,7 +42,7 @@ public:
         {
             const float x = track.getX() + track.getWidth() * db / 24.0f;
             g.setColour(c(outline));
-            g.fillRect(x, track.getY(), 1.0f, track.getHeight());
+            g.fillRect(juce::Rectangle<float>(x, track.getY(), 1.0f, track.getHeight()));
         }
 
         const float w = track.getWidth() * current / 24.0f;
@@ -54,11 +55,12 @@ public:
         if (peak > 0.5f)
         {
             g.setColour(c(gr).brighter(0.3f));
-            g.fillRect(px - 1.0f, track.getY() - 2.0f, 2.0f, track.getHeight() + 4.0f);
+            g.fillRect(juce::Rectangle<float>(px - 1.0f, track.getY() - 2.0f, 2.0f, track.getHeight() + 4.0f));
         }
 
         g.setColour(c(textDim));
-        g.drawText("24", track.getRight() - 18.0f, track.getBottom(), 18.0f, 10.0f,
+        g.drawText("24",
+            juce::Rectangle<float>(track.getRight() - 18.0f, track.getBottom(), 18.0f, 10.0f),
             juce::Justification::centredRight);
     }
 

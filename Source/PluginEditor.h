@@ -32,9 +32,6 @@ private:
         // Group's "*Enable" switch: lives in the group title bar instead of a
         // labelled row (the switch itself is the enable control).
         bool isEnable = false;
-        // Band-count rule (EQ/DEQ/MBC); actual visibility is applied in
-        // resized() as bandVisible && !group collapsed.
-        bool bandVisible = true;
         juce::Label label;
         juce::Slider slider;       // for float params
         juce::ComboBox combo;      // for choice params

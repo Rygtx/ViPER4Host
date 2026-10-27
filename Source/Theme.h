@@ -27,6 +27,19 @@ constexpr uint32_t gr = 0xfffb923c; // gain-reduction amber (industry convention
 inline juce::Colour c(uint32_t v) { return juce::Colour(v); }
 } // namespace theme
 
+// Shared formatting: 1234 Hz -> "1.23 kHz", 870 -> "870 Hz" (trims trailing zeros).
+inline juce::String freqText(float f)
+{
+    if (f >= 1000.0f)
+    {
+        auto s = juce::String(f / 1000.0f, 2);
+        while (s.containsChar('.') && (s.endsWithChar('0') || s.endsWithChar('.')))
+            s = s.dropLastCharacters(1);
+        return s + " kHz";
+    }
+    return juce::String(juce::roundToInt(f)) + " Hz";
+}
+
 class ViperLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:

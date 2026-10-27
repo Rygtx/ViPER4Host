@@ -217,6 +217,10 @@
     "mbcBandNoClip": "防削波",
     "chooseFile": "選擇檔案…",
     "noFile": "未載入",
+    "convErrRead": "無法讀取脈衝響應檔案。",
+    "ddcErrRead": "無法讀取 DDC 檔案。",
+    "ddcErrFormat": "無法識別的 DDC 檔案格式。",
+    "presetSaveFailed": "預設儲存失敗。",
     "bypass": "旁路"
   },
   "juce": {

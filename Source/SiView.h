@@ -179,7 +179,7 @@ private:
 
         // centre line (mono reference)
         g.setColour(c(outline).brighter(0.2f));
-        g.fillRect(r.getCentreX(), r.getY(), 1.0f, r.getHeight());
+        g.fillRect(juce::Rectangle<float>(r.getCentreX(), r.getY(), 1.0f, r.getHeight()));
 
         // bands: zone label + width spread from the centre
         {
@@ -208,7 +208,8 @@ private:
             const float yBottom = zone == 0 ? r.getBottom() : yOf(zone == 1 ? lowCross() : highCross());
             g.setColour(c(textDim));
             g.drawText(v4h::localisation::tr(lang, zoneKeys[zone]),
-                r.getX() + 6.0f, yTop, 60.0f, yBottom - yTop, juce::Justification::centredLeft);
+                juce::Rectangle<float>(r.getX() + 6.0f, yTop, 60.0f, yBottom - yTop),
+                juce::Justification::centredLeft);
         }
 
         // crossover lines (drag vertically)
@@ -217,7 +218,7 @@ private:
             const float y = yOf(line == 1 ? lowCross() : highCross());
             const bool active = line == dragCross || line == hoverCross;
             g.setColour(active ? c(accentBright) : c(textBright));
-            g.fillRect(r.getX() + 3.0f, y - 1.0f, r.getWidth() - 6.0f, 2.0f);
+            g.fillRect(juce::Rectangle<float>(r.getX() + 3.0f, y - 1.0f, r.getWidth() - 6.0f, 2.0f));
             g.fillEllipse(r.getX() + 3.0f, y - 4.0f, 8.0f, 8.0f);
             g.fillEllipse(r.getRight() - 11.0f, y - 4.0f, 8.0f, 8.0f);
         }
@@ -239,20 +240,9 @@ private:
                 + juce::String(widthOf(zone), 2) + "x";
         }
         if (readout.isNotEmpty())
-            g.drawText(readout, r.getX(), r.getY() + 2.0f, r.getWidth() - 8.0f, 14.0f,
+            g.drawText(readout,
+                juce::Rectangle<float>(r.getX(), r.getY() + 2.0f, r.getWidth() - 8.0f, 14.0f),
                 juce::Justification::centredRight);
-    }
-
-    static juce::String freqText(float f)
-    {
-        if (f >= 1000.0f)
-        {
-            auto s = juce::String(f / 1000.0f, 2);
-            while (s.containsChar('.') && (s.endsWithChar('0') || s.endsWithChar('.')))
-                s = s.dropLastCharacters(1);
-            return s + " kHz";
-        }
-        return juce::String(juce::roundToInt(f)) + " Hz";
     }
 
     juce::AudioProcessorValueTreeState& apvts;

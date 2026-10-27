@@ -6,14 +6,14 @@ Wraps the [ViPERDSP](https://github.com/likelikeslike/ViPERDSP) engine as a
 plugin so the ViPER processing chain can run inside any DAW or VST host.
 Built with JUCE; VST2 support uses the FST compatibility headers.
 
-## Exposed effects (first pass)
+## Exposed effects
 
-Master limiter / output, AGC (playback gain control), ViPER Bass, Bass Mono,
-ViPER Clarity, Headphone Surround+ (VHE), Field Surround, Reverberation,
-Cure crossfeed, Tube Simulator.
-
-Equalizer (31-band), convolver, DDC, compressors and the remaining effects are
-not exposed yet — the engine supports them, parameter plumbing is additive.
+Everything the engine supports is exposed: master limiter / output, AGC,
+LUFS loudness targeting, FET and multiband compressors, graphic EQ
+(10/15/25/31-band) and dynamic EQ, ViPER Bass, Bass Mono, psychoacoustic
+bass, spectrum extension, convolver, DDC, field / differential surround,
+stereo imager, headphone surround+ (VHE), reverberation, dynamic system,
+clarity, Cure crossfeed, tube simulator, AnalogX and speaker correction.
 
 ## Building
 
@@ -41,5 +41,5 @@ Outputs land in `build/ViPER4Host_artefacts/Release/` (VST2 `dll`, VST3 `vst3`).
 ## Repository layout
 
 - `Source/` — plugin sources
-- `ViPERDSP/` — the DSP engine (submodule)
+- `extern/ViPERDSP` — the DSP engine (submodule)
 - `extern/JUCE`, `extern/FST` — framework and VST2 headers (submodules)
