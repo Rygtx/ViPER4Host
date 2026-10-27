@@ -106,7 +106,11 @@ private:
     juce::File presetsDir() const;
     void refreshPresetList();
     void savePresetDialog();
-    void activateAbSlot(int slot);
+    // 右键预设栏：列出全部预设（重命名/删除，不必先载入）/ 打开文件夹。
+    void mouseDown(const juce::MouseEvent&) override;
+    void showPresetMenu();
+    void renamePresetDialog(int fileIndex);
+    void deletePresetWithConfirm(int fileIndex);
 
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
@@ -128,13 +132,11 @@ private:
     juce::Component content_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
 
-    // 预设与 A/B 对比。切换时快照槽位状态；编辑始终落在实时状态上
-    // （下次切换时也会进入当前活动槽位）。
+    // 预设与 A/B 对比。A/B 槽位状态放在处理器里（随 DAW 工程一起保存）；
+    // 编辑始终落在实时状态上（下次切换时也会进入当前活动槽位）。
     juce::ComboBox presetBox_;
     juce::TextButton abButtons_[2];
     juce::TextButton abCopy_;
-    juce::ValueTree abSlots_[2];
-    int activeAbSlot_ = 0;
     juce::Array<juce::File> userPresetFiles_;
     // 频谱垫底用的 FFT 管线（单声道输出抽头 -> 对数频点）。
     juce::dsp::FFT fft_{11}; // 2^11 = 2048

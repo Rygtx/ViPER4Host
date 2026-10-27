@@ -57,6 +57,12 @@ public:
     // 预设支持：换状态树时保住 uiLanguage 属性。
     void applyStateTree(const juce::ValueTree& newState);
 
+    // A/B 对比：槽位快照和切换逻辑放在处理器里，随 getStateInformation
+    // 一起保存——关窗口、重开工程后 A/B 都还在。仅消息线程使用。
+    juce::ValueTree abSlots[2];
+    int activeAbSlot = 0;
+    void activateAbSlot(int slot);
+
     // 文件类效果。在调用方（消息）线程解析，通过一个原子槽位把结果交给
     // 音频线程；成功返回空字符串，否则返回本地化错误消息的键名后缀。
     juce::String loadConvolverFile(const juce::String& path);

@@ -12,6 +12,8 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
 {
     formatManager_.registerBasicFormats();
     parameters_.state.setProperty("uiLanguage", v4h::localisation::systemLanguage(), nullptr);
+    // A/B 两个槽位初始都等于当前状态。
+    abSlots[0] = abSlots[1] = parameters_.copyState();
     // 全局 LocalisedStrings 表会泄漏进宿主自己的 JUCE 文案，
     // 所以只在独立版里安装。
     if (wrapperType == juce::AudioProcessor::wrapperType_Standalone)
@@ -29,6 +31,17 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
             && lo[0][0] == 0.0f && lo[1][0] == 5.0f
             && hi[0][0] == 20.0f && hi[1][0] == 25.0f);
         jassert(!parseDdcText("1 2 3 4 5", lo, hi)); // 数据太短
+    }
+
+    // 状态保存/恢复自检：A/B 槽位必须随状态一起走完一轮。
+    {
+        activeAbSlot = 1;
+        juce::MemoryBlock block;
+        getStateInformation(block);
+        activeAbSlot = 0;
+        setStateInformation(block.getData(), static_cast<int> (block.getSize()));
+        jassert(activeAbSlot == 1 && abSlots[0].isValid() && abSlots[1].isValid());
+        activeAbSlot = 0;
     }
 #endif
 }
@@ -706,6 +719,16 @@ void ViPER4HostAudioProcessor::applyStateTree(const juce::ValueTree& newState)
     parameters_.state.setProperty("uiLanguage", lang, nullptr);
 }
 
+void ViPER4HostAudioProcessor::activateAbSlot(int slot)
+{
+    if (slot == activeAbSlot)
+        return;
+    abSlots[activeAbSlot] = getParametersState().copyState();
+    activeAbSlot = slot;
+    if (abSlots[slot].isValid())
+        applyStateTree(abSlots[slot]);
+}
+
 juce::AudioProcessorEditor* ViPER4HostAudioProcessor::createEditor()
 {
     return new ViPER4HostAudioProcessorEditor(*this);
@@ -726,22 +749,50 @@ void ViPER4HostAudioProcessor::changeProgramName(int, const juce::String&) {}
 
 void ViPER4HostAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    // 外层包一层：参数状态 + A/B 槽位快照一起存。
     if (auto xml = parameters_.copyState().createXml())
-        copyXmlToBinary(*xml, destData);
+    {
+        juce::XmlElement root("ViPER4HostState");
+        root.addChildElement(xml.release());
+        auto* ab = new juce::XmlElement("Ab");
+        ab->setAttribute("active", activeAbSlot);
+        for (auto& slot : abSlots)
+            if (auto slotXml = slot.createXml())
+                ab->addChildElement(slotXml.release());
+        root.addChildElement(ab);
+        copyXmlToBinary(root, destData);
+    }
 }
 
 void ViPER4HostAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary(data, sizeInBytes))
-        if (xml->hasTagName(parameters_.state.getType()))
+    if (auto root = getXmlFromBinary(data, sizeInBytes))
+    {
+        // 老文件没有外层包装，直接就是状态树；此时没有 A/B 可恢复。
+        auto* stateXml = root.get();
+        auto* ab = root->getChildByName("Ab");
+        if (root->hasTagName("ViPER4HostState"))
         {
-            parameters_.replaceState(juce::ValueTree::fromXml(*xml));
+            stateXml = root->getChildElement(0);
+            ab = root->getChildByName("Ab");
+        }
+        if (stateXml != nullptr && stateXml->hasTagName(parameters_.state.getType()))
+        {
+            parameters_.replaceState(juce::ValueTree::fromXml(*stateXml));
             // 重新加载恢复出的状态里记录的文件数据。
             if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString(); conv.isNotEmpty())
                 loadConvolverFile(conv);
             if (const auto ddc = parameters_.state.getProperty("ddcPath", {}).toString(); ddc.isNotEmpty())
                 loadDdcFile(ddc);
+            if (ab != nullptr)
+            {
+                activeAbSlot = juce::jlimit(0, 1, ab->getIntAttribute("active"));
+                for (int s = 0; s < 2; ++s)
+                    if (auto* slotXml = ab->getChildElement(s))
+                        abSlots[s] = juce::ValueTree::fromXml(*slotXml);
+            }
         }
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -187,8 +187,8 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         languageBox_.addItem(option.displayName, static_cast<int>(languageBox_.getNumItems()) + 1);
     languageBox_.onChange = [this] { selectLanguage(); };
 
-    // 预设与 A/B 对比：槽位 0 从实时状态开始，槽位 1 是它的副本。
-    abSlots_[0] = abSlots_[1] = processor_.getParametersState().copyState();
+    // 预设与 A/B 对比：槽位状态放在处理器里（随 DAW 工程一起保存），
+    // 活动槽位取恢复出来的状态。
     for (int s = 0; s < 2; ++s)
     {
         abButtons_[s].setButtonText(s == 0 ? "A" : "B");
@@ -196,12 +196,14 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         abButtons_[s].setRadioGroupId(2);
         abButtons_[s].onClick = [this, s] {
             if (abButtons_[s].getToggleState())
-                activateAbSlot(s);
+                processor_.activateAbSlot(s);
         };
         addAndMakeVisible(abButtons_[s]);
     }
-    abButtons_[0].setToggleState(true, juce::dontSendNotification);
-    abCopy_.onClick = [this] { abSlots_[activeAbSlot_] = processor_.getParametersState().copyState(); };
+    abButtons_[processor_.activeAbSlot].setToggleState(true, juce::dontSendNotification);
+    abCopy_.onClick = [this] {
+        processor_.abSlots[processor_.activeAbSlot] = processor_.getParametersState().copyState();
+    };
     addAndMakeVisible(abCopy_);
     presetBox_.onChange = [this] {
         const int id = presetBox_.getSelectedId();
@@ -214,6 +216,8 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         }
     };
     addAndMakeVisible(presetBox_);
+    // 右键预设栏弹出预设管理菜单（左键仍由 ComboBox 自己处理弹窗）。
+    presetBox_.addMouseListener(this, true);
     refreshPresetList();
 
     for (int i = 0; i < numPages; ++i)
@@ -426,14 +430,113 @@ void ViPER4HostAudioProcessorEditor::savePresetDialog()
         true);
 }
 
-void ViPER4HostAudioProcessorEditor::activateAbSlot(int slot)
+void ViPER4HostAudioProcessorEditor::mouseDown(const juce::MouseEvent& e)
 {
-    if (slot == activeAbSlot_)
-        return;
-    abSlots_[activeAbSlot_] = processor_.getParametersState().copyState();
-    activeAbSlot_ = slot;
-    if (abSlots_[slot].isValid())
-        processor_.applyStateTree(abSlots_[slot]);
+    if (e.mods.isPopupMenu() && presetBox_.isParentOf(e.eventComponent))
+        showPresetMenu();
+}
+
+void ViPER4HostAudioProcessorEditor::showPresetMenu()
+{
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    const int sel = presetBox_.getSelectedId();
+    const int loaded = (sel >= 100 && sel - 100 < userPresetFiles_.size()) ? sel - 100 : -1;
+
+    // 逐个列出预设：当前载入的打勾；每个带"重命名/删除"子菜单，
+    // 不必先载入就能管理（载入会改当前参数，管理不该有这个副作用）。
+    juce::PopupMenu menu;
+    for (int i = 0; i < userPresetFiles_.size(); ++i)
+    {
+        juce::PopupMenu sub;
+        sub.addItem(10000 + i * 2, v4h::localisation::tr(lang, "presetRename"));
+        sub.addItem(10000 + i * 2 + 1, v4h::localisation::tr(lang, "presetDelete"));
+        menu.addSubMenu(userPresetFiles_[i].getFileNameWithoutExtension(), sub,
+            true, nullptr, i == loaded);
+    }
+    if (userPresetFiles_.size() > 0)
+        menu.addSeparator();
+    menu.addItem(3, v4h::localisation::tr(lang, "presetOpenFolder"));
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetBox_),
+        [this](int choice)
+        {
+            if (choice == 3)
+            {
+                presetsDir().startAsProcess();
+            }
+            else if (choice >= 10000 && (choice - 10000) / 2 < userPresetFiles_.size())
+            {
+                if ((choice - 10000) % 2 == 0)
+                    renamePresetDialog((choice - 10000) / 2);
+                else
+                    deletePresetWithConfirm((choice - 10000) / 2);
+            }
+        });
+}
+
+void ViPER4HostAudioProcessorEditor::deletePresetWithConfirm(int fileIndex)
+{
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    const auto file = userPresetFiles_[fileIndex];
+    juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon,
+        v4h::localisation::tr(lang, "presetDelete"),
+        v4h::localisation::tr(lang, "presetDeleteConfirm") + "\n" + file.getFileName(),
+        {}, {}, this,
+        juce::ModalCallbackFunction::create([this, file](int ok)
+        {
+            if (!ok)
+                return;
+            file.deleteFile();
+            // 删除的正好是当前载入的预设时，顺带清掉下拉框的选择。
+            const int sel = presetBox_.getSelectedId();
+            if (sel >= 100 && sel - 100 < userPresetFiles_.size()
+                && userPresetFiles_[sel - 100] == file)
+                presetBox_.setSelectedId(0, juce::dontSendNotification);
+            refreshPresetList();
+        }));
+}
+
+void ViPER4HostAudioProcessorEditor::renamePresetDialog(int fileIndex)
+{
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    const auto file = userPresetFiles_[fileIndex];
+    auto* window = new juce::AlertWindow(v4h::localisation::tr(lang, "presetRename"), {},
+        juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor("name", file.getFileNameWithoutExtension());
+    window->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [this, window, file, lang](int result)
+        {
+            if (result != 1)
+                return;
+            // 与保存预设一致：Windows 文件名非法字符替换，不拒绝。
+            auto name = window->getTextEditorContents("name").trim();
+            for (const char* p = "/\\:*?\"<>|"; *p != '\0'; ++p)
+                name = name.replaceCharacter(static_cast<juce::juce_wchar>(*p), '_');
+            if (name.isEmpty())
+                return;
+            const auto target = presetsDir().getChildFile(name + ".xml");
+            if (! file.moveFileTo(target))
+            {
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                    v4h::localisation::tr(lang, "presetRename"),
+                    v4h::localisation::tr(lang, "presetRenameFailed"));
+                return;
+            }
+            // 改名的正好是当前载入的预设时，把选择跟到新名字上。
+            const int sel = presetBox_.getSelectedId();
+            const bool wasSelected = sel >= 100 && sel - 100 < userPresetFiles_.size()
+                && userPresetFiles_[sel - 100] == file;
+            refreshPresetList();
+            if (wasSelected)
+                for (int i = 0; i < userPresetFiles_.size(); ++i)
+                    if (userPresetFiles_[i] == target)
+                    {
+                        presetBox_.setSelectedId(100 + i, juce::dontSendNotification);
+                        break;
+                    }
+        }),
+        true);
 }
 
 ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addGroup(
