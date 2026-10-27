@@ -191,7 +191,7 @@ ViPER4HostAudioProcessor::createParameterLayout()
     addBool("pgcEnable", "AGC Enable");
     addFloat("pgcStrength", "AGC Strength", 0.5f, 3.0f, 1.0f, "x");
     addFloat("pgcMaxGain", "AGC Max Gain", 1.0f, 10.0f, 1.0f, "x");
-    addFloat("pgcOutputThreshold", "AGC Output Threshold", 0.3f, 1.0f, 1.0f);
+    addFloat("pgcOutputThreshold", "AGC Target Level", 0.3f, 1.0f, 1.0f);
 
     // LUFS 响度目标
     addBool("lufsEnable", "LUFS Enable");

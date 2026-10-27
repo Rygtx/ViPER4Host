@@ -26,7 +26,7 @@
     "groupAGC": "自動音量補償",
     "pgcStrength": "補償強度",
     "pgcMaxGain": "最大補償",
-    "pgcOutputThreshold": "輸出閾值",
+    "pgcOutputThreshold": "目標音量",
     "groupLufs": "響度目標 (LUFS)",
     "lufsTarget": "目標響度",
     "lufsMaxGain": "最大增益",

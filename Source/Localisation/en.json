@@ -26,7 +26,7 @@
     "groupAGC": "AGC",
     "pgcStrength": "AGC Strength",
     "pgcMaxGain": "AGC Max Gain",
-    "pgcOutputThreshold": "AGC Output Threshold",
+    "pgcOutputThreshold": "AGC Target Level",
     "groupLufs": "Loudness (LUFS)",
     "lufsTarget": "Target Loudness",
     "lufsMaxGain": "Max Gain",
