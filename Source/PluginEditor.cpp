@@ -63,6 +63,15 @@ juce::String labelKey(const juce::String& paramId)
     }
     return paramId;
 }
+
+// "eqBandN"（图形 EQ 频段滑杆）-> N；其他参数（eqEnable、eqBandCount）返回 0。
+int eqBandNumberOf(const juce::String& id)
+{
+    if (!id.startsWith("eqBand"))
+        return 0;
+    const auto suffix = id.substring(6);
+    return suffix.isNotEmpty() && suffix.containsOnly("0123456789") ? suffix.getIntValue() : 0;
+}
 } // namespace
 
 ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioProcessor& processor)
@@ -577,7 +586,8 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
     constexpr int eqCounts[] = { 10, 15, 25, 31 };
     const int eqN = eqCounts[bandCount("eqBandCount")];
     const int deN = bandCount("deBandCount") + 1;
-    const int mbcN = bandCount("mbcBandCount") + 1;
+    // 引擎只支持 3/5 段，界面档位与之对应（0 = 3 段，1 = 5 段）。
+    const int mbcN = bandCount("mbcBandCount") == 0 ? 3 : 5;
 
     // EQ / MBC 的图形跟随频段数变化。
     for (auto& pg : groups_)
@@ -603,6 +613,11 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
         selectDeBand(deN - 1); // 详情行跟随变小的频段数
     if (selectedMbcBand_ >= mbcN)
         selectMbcBand(mbcN - 1);
+    // 超出当前段数的 MBC 频段分组整体隐藏。
+    for (auto& pg : groups_)
+        if (pg->groupId.startsWith("groupMbcB"))
+            pg->visible = pg->groupId.substring(9).getIntValue() <= mbcN;
+    relabelEqBands(); // 段数变化后 EQ 滑杆标签跟随引擎频点
     resized();
 }
 
@@ -685,7 +700,32 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
     }
 
     abCopy_.setButtonText(tr(lang, "abCopy"));
+    relabelEqBands(); // EQ 频段标签是频率文本，不走本地化键
     refreshPresetList(); // 重建下拉框，带上已翻译的预设名
+}
+
+// EQ 频段滑杆的标签按当前段数取引擎真实频点（本地化文件里的固定 ISO 名
+// 只在 31 段模式完全一致）。频率文本语言无关，直接用通用格式化。
+void ViPER4HostAudioProcessorEditor::relabelEqBands()
+{
+    auto* countParam = dynamic_cast<juce::AudioParameterChoice*>(
+        processor_.getParametersState().getParameter("eqBandCount"));
+    if (countParam == nullptr)
+        return;
+    constexpr int counts[] = { 10, 15, 25, 31 };
+    const float* table = v4h::EqCurve::freqTable(counts[countParam->getIndex()]);
+    for (auto& pg : groups_)
+    {
+        if (pg->groupId != "groupEq")
+            continue;
+        for (auto& row : pg->rows)
+        {
+            const int band = eqBandNumberOf(row->paramId);
+            if (band > 0)
+                row->label.setText(v4h::freqText(table[band - 1]),
+                    juce::dontSendNotification);
+        }
+    }
 }
 
 void ViPER4HostAudioProcessorEditor::resized()
@@ -729,6 +769,16 @@ void ViPER4HostAudioProcessorEditor::resized()
         row.toggle.setVisible(on);
     };
 
+    // 图形 EQ 超出当前段数的频段滑杆不进网格（MBC 频段分组由
+    // updateBandVisibility 通过 pg->visible 隐藏）。
+    int eqN = 31;
+    if (auto* p = dynamic_cast<juce::AudioParameterChoice*>(
+            processor_.getParametersState().getParameter("eqBandCount")))
+    {
+        constexpr int eqCounts[] = { 10, 15, 25, 31 };
+        eqN = eqCounts[p->getIndex()];
+    }
+
     int y = gap;
     for (auto& pg : groups_)
     {
@@ -750,7 +800,12 @@ void ViPER4HostAudioProcessorEditor::resized()
         {
             if (row->isEnable) // 开关在标题栏里，不在网格里
                 continue;
-            const bool on = !pg->collapsed;
+            bool on = !pg->collapsed;
+            if (on && pg->groupId == "groupEq")
+            {
+                const int band = eqBandNumberOf(row->paramId);
+                on = band == 0 || band <= eqN;
+            }
             applyVis(*row, on);
             if (on)
                 ++rowCount;

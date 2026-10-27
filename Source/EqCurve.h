@@ -44,6 +44,27 @@ public:
         }
     }
 
+    // 与引擎 MinPhaseIIRCoeffs 一致的各段数频点表（编辑器标签也用它）。
+    static const float* freqTable(int count)
+    {
+        static constexpr float f10[] = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+        static constexpr float f15[] = { 25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600,
+            2500, 4000, 6300, 10000, 16000 };
+        static constexpr float f25[] = { 20, 31.5f, 40, 50, 80, 100, 125, 160, 250, 315,
+            400, 500, 800, 1000, 1250, 1600, 2500, 3150, 4000, 5000, 8000, 10000, 12500,
+            16000, 20000 };
+        static constexpr float f31[] = { 20, 25, 31.5f, 40, 50, 63, 80, 100, 125, 160, 200,
+            250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000,
+            6300, 8000, 10000, 12500, 16000, 20000 };
+        switch (count)
+        {
+            case 10: return f10;
+            case 15: return f15;
+            case 25: return f25;
+            default: return f31;
+        }
+    }
+
     // 绑定前 `count` 个频段：前缀 "eqBand"（图形 EQ，eqBand1..N）或
     // "de"（动态 EQ，de1Freq/Q/Gain/Type ……）。频段数变化时会再次调用；
     // 重建参数附着。
@@ -161,26 +182,6 @@ private:
     {
         if (auto* p = rp(id))
             begin ? p->beginChangeGesture() : p->endChangeGesture();
-    }
-
-    static const float* freqTable(int count)
-    {
-        static constexpr float f10[] = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
-        static constexpr float f15[] = { 25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600,
-            2500, 4000, 6300, 10000, 16000 };
-        static constexpr float f25[] = { 20, 31.5f, 40, 50, 80, 100, 125, 160, 250, 315,
-            400, 500, 800, 1000, 1250, 1600, 2500, 3150, 4000, 5000, 8000, 10000, 12500,
-            16000, 20000 };
-        static constexpr float f31[] = { 20, 25, 31.5f, 40, 50, 63, 80, 100, 125, 160, 200,
-            250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000,
-            6300, 8000, 10000, 12500, 16000, 20000 };
-        switch (count)
-        {
-            case 10: return f10;
-            case 15: return f15;
-            case 25: return f25;
-            default: return f31;
-        }
     }
 
     std::vector<Band> snapshot() const

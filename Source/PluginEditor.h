@@ -94,6 +94,8 @@ private:
     void fillCombo(juce::ComboBox& combo, const juce::String& paramId,
         const juce::StringArray& choices, const juce::String& languageCode);
     void relabelAll(const juce::String& languageCode);
+    // EQ 频段滑杆标签按当前段数取引擎真实频点。
+    void relabelEqBands();
     void selectLanguage();
     void pickFile(ParamGroup& group);
     void refreshFileStatus(ParamGroup& group);

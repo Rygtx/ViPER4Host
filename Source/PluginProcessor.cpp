@@ -330,7 +330,8 @@ ViPER4HostAudioProcessor::createParameterLayout()
 
     // 多段压缩器
     addBool("mbcEnable", "MBC Enable");
-    addChoice("mbcBandCount", "MBC Bands", { "1", "2", "3", "4", "5" }, 4);
+    // 引擎只支持 3/5 段，档位与之对应（0 = 3 段，1 = 5 段）。
+    addChoice("mbcBandCount", "MBC Bands", { "3", "5" }, 1);
     constexpr float mbcDefaultCrossovers[] = { 120.0f, 500.0f, 4000.0f, 8000.0f };
     for (int c = 1; c <= 4; ++c)
     {
@@ -620,7 +621,7 @@ void ViPER4HostAudioProcessor::buildEngineParams(viper::ViPERParams& p) const
     p.speaker_correction.enable = v("spkEnable") > 0.5f;
 
     p.multiband_compressor.enable = v("mbcEnable") > 0.5f;
-    p.multiband_compressor.band_count = static_cast<uint32_t>(v("mbcBandCount")) + 1;
+    p.multiband_compressor.band_count = v("mbcBandCount") < 0.5f ? 3u : 5u;
     for (int c = 0; c < 4; ++c)
         p.multiband_compressor.crossover_frequencies[static_cast<size_t>(c)] =
             vs("mbcCross" + juce::String(c + 1));
