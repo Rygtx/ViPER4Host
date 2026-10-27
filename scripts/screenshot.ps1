@@ -16,6 +16,8 @@ public class Win {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool repaint);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -39,6 +41,16 @@ while ((Get-Date) -lt $deadline) {
 if ($h -eq [IntPtr]::Zero) { Write-Error "window not found for process '$ProcessName'"; exit 1 }
 
 [Win]::SetForegroundWindow($h) | Out-Null
+# JUCE ignores PostMessage clicks while the window is background. Plain
+# SetForegroundWindow fails when the CALLER isn't foreground (Windows rule);
+# a synthetic Alt tap makes the OS treat this as a user gesture and allows it.
+Start-Sleep -Milliseconds 100
+if ([Win]::GetForegroundWindow() -ne $h) {
+  [Win]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)  # Alt down
+  [Win]::SetForegroundWindow($h) | Out-Null
+  [Win]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)  # Alt up (KEYUP)
+  Start-Sleep -Milliseconds 250
+}
 if ($Resize -match '^(\d+)x(\d+)$') {
   [Win]::MoveWindow($h, 0, 0, [int]$Matches[1], [int]$Matches[2], $true) | Out-Null
   Start-Sleep -Milliseconds 800

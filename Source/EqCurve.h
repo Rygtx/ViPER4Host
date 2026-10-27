@@ -5,14 +5,17 @@
 // click = select band, wheel = fine gain, double-click = reset gain).
 //
 // Dynamic mode draws the summed RBJ biquad magnitude of every band; Graphic
-// mode interpolates the band points with a monotone cubic (Fritsch-Carlson,
-// no overshoot between untouched bands). The drawn curve is a UI aid — the
-// parameters remain the single source of truth.
+// mode mirrors the engine's own bandpass-section math (MinPhaseIIRCoeffs),
+// normalised so the flat setting sits at 0 dB.
+// The editor feeds an output spectrum in through a raw pointer (drawn under
+// the curve). Arrows nudge the selected band (Shift = coarse); Alt+drag /
+// Ctrl+wheel adjusts Q in Dynamic mode.
 
 #include "Theme.h"
 
 #include <JuceHeader.h>
 #include <cmath>
+#include <complex>
 #include <vector>
 
 namespace v4h
@@ -27,6 +30,19 @@ public:
         : apvts(state), mode(m)
     {
         setMouseClickGrabsKeyboardFocus(false);
+        setWantsKeyboardFocus(true);
+    }
+
+    // Live data from the editor (may be null until the timer feeds them).
+    static constexpr int kSpectrumPoints = 128;
+    void setSpectrum(const float* db) { spectrumDb = db; }
+    void setSampleRate(double fs)
+    {
+        if (fs > 0.0 && fs != fsDraw)
+        {
+            fsDraw = fs;
+            repaint();
+        }
     }
 
     // Binds the first `count` bands: prefix "eqBand" (Graphic, eqBand1..N) or
@@ -64,11 +80,61 @@ public:
     // per-band detail rows to the selected band.
     std::function<void(int)> onSelect;
 
+    struct Band; // defined in the private section below
+
+    // --- engine-faithful Graphic response ----------------------------------
+    // Mirrors ViPERDSP: each band is a fixed bandpass biquad (coefficients
+    // from MinPhaseIIRCoeffs::UpdateCoeffs), the output sums level_k * H_k.
+    // The display is normalised against the flat setting so 0 dB everywhere
+    // really draws as 0 dB — it shows what the user changed, not the 0.636
+    // makeup constant baked into the engine.
+
+    static double bandPoleRadius(double centerFreq, double octaves, double fs)
+    {
+        const double x = std::pow(2.0, octaves / 2.0);
+        const double w0 = 2.0 * juce::MathConstants<double>::pi * centerFreq / fs;
+        const double wy = 2.0 * juce::MathConstants<double>::pi * centerFreq * x / fs;
+        const double cw = std::cos(w0), cy = std::cos(wy), sy = std::sin(wy);
+        const double a = cw * cy, b = cw * cw / 2.0, c = sy * sy;
+        const double d = b - a + 0.5 - c;
+        const double e = c + (b + cy * cy - a - 0.5);
+        const double f = cw * cw * 0.125 - cw * cy * 0.25 + 0.125 - c * 0.25;
+        const double xr = (f - e * e / (d * 4.0)) / d;
+        const double yr = e / (d + d);
+        if (xr >= 0.0)
+            return 0.0;
+        const double z = std::sqrt(-xr);
+        const double ra = -yr - z, rb = z - yr;
+        return ra > rb ? ra : rb;
+    }
+
+    double graphicResponseDb(const std::vector<Band>& bs, double f) const
+    {
+        const double octaves = bandCount == 10 ? 1.0
+            : bandCount == 15                  ? 2.0 / 3.0
+                                               : 1.0 / 3.0;
+        const double w = 2.0 * juce::MathConstants<double>::pi * f / fsDraw;
+        const std::complex<double> zm1(std::cos(w), -std::sin(w));
+        const std::complex<double> zm2 = zm1 * zm1;
+        std::complex<double> sum{}, flat{};
+        for (int b = 0; b < bandCount; ++b)
+        {
+            const double r = bandPoleRadius(bs[(size_t) b].f, octaves, fsDraw);
+            const double c1 = 2.0 * r, c2 = 0.5 - r;
+            const double w0 = 2.0 * juce::MathConstants<double>::pi * bs[(size_t) b].f / fsDraw;
+            const double c3 = 2.0 * (r + 0.5) * std::cos(w0);
+            const std::complex<double> h = c2 * (1.0 - zm2) / (1.0 - c3 * zm1 + c1 * zm2);
+            sum += std::pow(10.0, bs[(size_t) b].g / 20.0) * 0.636 * h;
+            flat += 0.636 * h;
+        }
+        return 20.0 * std::log10(std::abs(sum) / std::max(std::abs(flat), 1e-9));
+    }
+
 private:
     static constexpr float minFreq = 20.0f, maxFreq = 20000.0f, maxDb = 12.0f;
     static constexpr float padL = 34.0f, padR = 10.0f, padT = 8.0f, padB = 16.0f;
-    // Drawing only — response shape vs sample rate is negligible on a log axis.
-    static constexpr double fsDraw = 48000.0;
+    // Real engine sample rate where known (setSampleRate); falls back to 48k.
+    double fsDraw = 48000.0;
 
     juce::String bandId(int band, const char* suffix) const
     {
@@ -201,16 +267,20 @@ private:
         dragBand = pick(e.position);
         if (dragBand < 0)
             return;
-        if (mode == Mode::Dynamic && selected != dragBand)
+        // Both modes keep a selection: it drives the keyboard nudging too.
+        if (selected != dragBand)
         {
             selected = dragBand;
-            if (onSelect)
+            if (mode == Mode::Dynamic && onSelect)
                 onSelect(selected);
         }
         hover = dragBand;
+        qAtDragStart = paramValue(bandId(dragBand, "Q"));
+        yAtDragStart = e.position.y;
         gesture(gainId(dragBand), true);
         if (mode == Mode::Dynamic)
             gesture(bandId(dragBand, "Freq"), true);
+        grabKeyboardFocus();
         repaint();
     }
 
@@ -218,6 +288,14 @@ private:
     {
         if (dragBand < 0)
             return;
+        // Alt + vertical drag rides the Q value instead of the gain.
+        if (mode == Mode::Dynamic && e.mods.isAltDown())
+        {
+            setParam(bandId(dragBand, "Q"),
+                (float) juce::jlimit(0.3, 16.0,
+                    qAtDragStart * std::exp(-(e.position.y - yAtDragStart) / 150.0)));
+            return;
+        }
         setParam(gainId(dragBand), juce::jlimit(-maxDb, maxDb, dbOf(e.position.y)));
         if (mode == Mode::Dynamic)
             setParam(bandId(dragBand, "Freq"),
@@ -270,12 +348,82 @@ private:
         const int b = dragBand >= 0 ? dragBand : pick(e.position);
         if (b < 0 || wheel.deltaY == 0)
             return;
+        // Ctrl/Alt + wheel rides Q; plain wheel rides gain.
+        if (mode == Mode::Dynamic && (e.mods.isCtrlDown() || e.mods.isAltDown()))
+        {
+            const auto qid = bandId(b, "Q");
+            const float q = (float) juce::jlimit(0.3, 16.0,
+                paramValue(qid) * (wheel.deltaY > 0 ? 1.122 : 1.0 / 1.122));
+            gesture(qid, true);
+            setParam(qid, q);
+            gesture(qid, false);
+            return;
+        }
         const auto id = gainId(b);
         const float g = juce::jlimit(-maxDb, maxDb,
             paramValue(id) + (wheel.deltaY > 0 ? 0.5f : -0.5f));
         gesture(id, true);
         setParam(id, g);
         gesture(id, false);
+    }
+
+    // Arrow keys nudge the selected band. Graphic: left/right walk the bands,
+    // up/down trim gain. Dynamic: left/right move frequency, alt+left/right
+    // trim Q. Shift multiplies the step by 4.
+    bool keyPressed(const juce::KeyPress& k) override
+    {
+        if (bandCount == 0)
+            return false;
+        const int code = k.getKeyCode();
+        const auto mods = k.getModifiers();
+        const bool left = code == juce::KeyPress::leftKey;
+        const bool right = code == juce::KeyPress::rightKey;
+        const bool up = code == juce::KeyPress::upKey;
+        const bool down = code == juce::KeyPress::downKey;
+        if (!left && !right && !up && !down)
+            return false;
+
+        const float coarse = mods.isShiftDown() ? 4.0f : 1.0f;
+        const auto nudge = [&](const juce::String& id, float v) {
+            gesture(id, true);
+            setParam(id, v);
+            gesture(id, false);
+        };
+
+        if (mode == Mode::Graphic)
+        {
+            if (left || right)
+            {
+                selected = juce::jlimit(0, bandCount - 1, selected + (right ? 1 : -1));
+                repaint();
+                return true;
+            }
+            nudge(gainId(selected), juce::jlimit(-maxDb, maxDb,
+                paramValue(gainId(selected)) + (up ? 0.25f : -0.25f) * coarse));
+            repaint();
+            return true;
+        }
+
+        if (up || down)
+        {
+            nudge(gainId(selected), juce::jlimit(-maxDb, maxDb,
+                paramValue(gainId(selected)) + (up ? 0.25f : -0.25f) * coarse));
+        }
+        else if (mods.isAltDown())
+        {
+            nudge(bandId(selected, "Q"), (float) juce::jlimit(0.3, 16.0,
+                paramValue(bandId(selected, "Q"))
+                    * (right ? 1.122 * coarse : 1.0 / (1.122 * coarse))));
+        }
+        else
+        {
+            const double ratio = std::pow(2.0, (right ? 1.0 : -1.0)
+                * (mods.isShiftDown() ? 1.0 : 1.0 / 12.0));
+            nudge(bandId(selected, "Freq"), juce::jlimit(minFreq, maxFreq,
+                (float) (paramValue(bandId(selected, "Freq")) * ratio)));
+        }
+        repaint();
+        return true;
     }
 
     // --- drawing -----------------------------------------------------------
@@ -316,6 +464,26 @@ private:
                     juce::Rectangle<float>(0.0f, y - 6.0f, padL - 4.0f, 12.0f),
                     juce::Justification::centredRight);
             }
+        }
+
+        // output spectrum underlay (fed by the editor's timer)
+        if (spectrumDb != nullptr)
+        {
+            juce::Path spec;
+            const auto ySpec = [&](float db) {
+                return p.getBottom() - juce::jlimit(0.0f, 96.0f, db + 96.0f) / 96.0f * p.getHeight();
+            };
+            spec.startNewSubPath(p.getX(), ySpec(-96.0f));
+            for (int i = 0; i < kSpectrumPoints; ++i)
+            {
+                const float f = minFreq * std::pow(1000.0f, i / (float) (kSpectrumPoints - 1));
+                spec.lineTo(xOf(f), ySpec(spectrumDb[i]));
+            }
+            spec.lineTo(p.getRight(), ySpec(-96.0f));
+            g.setColour(c(textBright).withAlpha(0.07f));
+            g.fillPath(spec);
+            g.setColour(c(textBright).withAlpha(0.25f));
+            g.strokePath(spec, juce::PathStrokeType(1.0f));
         }
 
         // response curve + soft fill under it
@@ -371,7 +539,7 @@ private:
     }
 
     // One RBJ biquad section's magnitude in dB at frequency f.
-    static double sectionDb(const Band& band, double f)
+    double sectionDb(const Band& band, double f) const
     {
         const double A = std::pow(10.0, band.g / 40.0);
         const double q = band.q;
@@ -433,57 +601,18 @@ private:
             return path;
         }
 
-        // Graphic: monotone cubic through the band points.
-        const int n = bandCount;
-        if (n < 2)
-        {
-            path.startNewSubPath(p.getX(), yOf(bs[0].g));
-            path.lineTo(p.getRight(), yOf(bs[0].g));
-            return path;
-        }
-        std::vector<juce::Point<float>> pts((size_t) n);
-        for (int b = 0; b < n; ++b)
-            pts[(size_t) b] = { xOf(bs[(size_t) b].f), yOf(bs[(size_t) b].g) };
-
-        std::vector<float> m((size_t)(n - 1)), t((size_t) n, 0.0f);
-        for (int i = 0; i < n - 1; ++i)
-            m[(size_t) i] = (pts[(size_t) i + 1].y - pts[(size_t) i].y)
-                / (pts[(size_t) i + 1].x - pts[(size_t) i].x);
-        t[0] = m[0];
-        t[(size_t) n - 1] = m[(size_t) n - 2];
-        for (int i = 1; i < n - 1; ++i)
-        {
-            if (m[(size_t) i - 1] * m[(size_t) i] <= 0)
-                t[(size_t) i] = 0;
-            else
-            {
-                const float w1 = 2 * m[(size_t) i - 1] + m[(size_t) i];
-                const float w2 = m[(size_t) i - 1] + 2 * m[(size_t) i];
-                t[(size_t) i] = (w1 + w2) / (w1 / m[(size_t) i - 1] + w2 / m[(size_t) i]);
-            }
-        }
-
-        path.startNewSubPath(pts[0]);
-        int seg = 0;
+        // Graphic: engine-faithful summed bandpass response.
         const int steps = juce::jmax(2, juce::roundToInt(p.getWidth()));
+        path.startNewSubPath(p.getX(), yOf(graphicResponseDb(bs, freqOf(p.getX()))));
         for (int s = 1; s <= steps; ++s)
         {
             const float x = p.getX() + p.getWidth() * s / steps;
-            while (seg < n - 2 && x > pts[(size_t) seg + 1].x)
-                ++seg;
-            const float h = pts[(size_t) seg + 1].x - pts[(size_t) seg].x;
-            const float u = (x - pts[(size_t) seg].x) / h;
-            const float u2 = u * u, u3 = u2 * u;
-            const float y = (2 * u3 - 3 * u2 + 1) * pts[(size_t) seg].y
-                + (u3 - 2 * u2 + u) * h * t[(size_t) seg]
-                + (-2 * u3 + 3 * u2) * pts[(size_t) seg + 1].y
-                + (u3 - u2) * h * t[(size_t) seg + 1];
-            path.lineTo(x, y);
+            path.lineTo(x, yOf(graphicResponseDb(bs, freqOf(x))));
         }
         return path;
     }
 
-    static double sumDb(const std::vector<Band>& bs, double f)
+    double sumDb(const std::vector<Band>& bs, double f) const
     {
         double total = 0.0;
         for (const auto& b : bs)
@@ -495,6 +624,8 @@ private:
     Mode mode;
     juce::String prefix;
     int bandCount = 0, selected = 0, hover = -1, dragBand = -1;
+    float qAtDragStart = 1.0f, yAtDragStart = 0.0f;
+    const float* spectrumDb = nullptr; // editor-owned, kSpectrumPoints entries
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EqCurve)

@@ -60,6 +60,12 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 {
     setLookAndFeel(&lookAndFeel_);
 
+    // Spectrum analyzer setup: Hann window + silent initial spectrum.
+    for (size_t i = 0; i < hann_.size(); ++i)
+        hann_[i] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi
+            * (float) i / (float) (hann_.size() - 1));
+    spectrumDb_.fill(-96.0f);
+
     // Sections in the same order as the parameter layout.
     addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
     addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
@@ -72,6 +78,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         auto& pg = *addGroup("groupEq", { "eqEnable", "eqBandCount" });
         pg.curve = std::make_unique<v4h::EqCurve>(
             processor_.getParametersState(), v4h::EqCurve::Mode::Graphic);
+        pg.curve->setSpectrum(spectrumDb_.data());
         pg.group.addAndMakeVisible(*pg.curve);
     }
 
@@ -80,6 +87,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
             "de1Freq", "de1Q", "de1Gain", "de1Threshold", "de1Attack", "de1Release", "de1Type" });
         pg.curve = std::make_unique<v4h::EqCurve>(
             processor_.getParametersState(), v4h::EqCurve::Mode::Dynamic);
+        pg.curve->setSpectrum(spectrumDb_.data());
         // Clicking a node on the graph switches the detail rows to that band.
         pg.curve->onSelect = [this](int band) { selectDeBand(band); };
         pg.group.addAndMakeVisible(*pg.curve);
@@ -145,6 +153,35 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         languageBox_.addItem(option.displayName, static_cast<int>(languageBox_.getNumItems()) + 1);
     languageBox_.onChange = [this] { selectLanguage(); };
 
+    // Presets & A/B compare: slot 0 starts as the live state, slot 1 its twin.
+    abSlots_[0] = abSlots_[1] = processor_.getParametersState().copyState();
+    for (int s = 0; s < 2; ++s)
+    {
+        abButtons_[s].setButtonText(s == 0 ? "A" : "B");
+        abButtons_[s].setClickingTogglesState(true);
+        abButtons_[s].setRadioGroupId(2);
+        abButtons_[s].onClick = [this, s] {
+            if (abButtons_[s].getToggleState())
+                activateAbSlot(s);
+        };
+        addAndMakeVisible(abButtons_[s]);
+    }
+    abButtons_[0].setToggleState(true, juce::dontSendNotification);
+    abCopy_.onClick = [this] { abSlots_[activeAbSlot_] = processor_.getParametersState().copyState(); };
+    addAndMakeVisible(abCopy_);
+    presetBox_.onChange = [this] {
+        const int id = presetBox_.getSelectedId();
+        if (id == 9999)
+            savePresetDialog();
+        else if (id >= 100 && id - 100 < userPresetFiles_.size())
+        {
+            if (auto xml = juce::parseXML(userPresetFiles_[id - 100]))
+                processor_.applyStateTree(juce::ValueTree::fromXml(*xml));
+        }
+    };
+    addAndMakeVisible(presetBox_);
+    refreshPresetList();
+
     for (int i = 0; i < numPages; ++i)
     {
         pageButtons_[i].setClickingTogglesState(true);
@@ -166,7 +203,13 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addAndMakeVisible(viewport_);
     setResizable(true, false);
     setResizeLimits(320, 240, 1920, 2160);
-    setSize(defaultWidth, defaultHeight);
+    // Restore the remembered window size (saved by the timer ~1 s after the
+    // user stops dragging the border).
+    auto& uiState = processor_.getParametersState().state;
+    setSize(
+        juce::jlimit(320, 1920, (int) uiState.getProperty("uiWidth", defaultWidth)),
+        juce::jlimit(240, 2160, (int) uiState.getProperty("uiHeight", defaultHeight)));
+    savedSize_ = { getWidth(), getHeight() };
 
     const auto language = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
     juce::StringArray codes;
@@ -174,6 +217,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         codes.add(option.code);
     languageBox_.setSelectedId(codes.indexOf(language) + 1, juce::dontSendNotification);
     relabelAll(language);
+    startTimerHz(30);
 }
 
 void ViPER4HostAudioProcessorEditor::selectLanguage()
@@ -187,6 +231,152 @@ void ViPER4HostAudioProcessorEditor::selectLanguage()
 ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor()
 {
     setLookAndFeel(nullptr);
+}
+
+// --- metering / spectrum ---------------------------------------------------
+
+void ViPER4HostAudioProcessorEditor::timerCallback()
+{
+    pullMetersAndSpectrum();
+
+    // Persist the window size once it has settled for ~1 s.
+    const std::array<int, 2> size = { getWidth(), getHeight() };
+    if (size != savedSize_)
+    {
+        savedSize_ = size;
+        resizeIdleTicks_ = 0;
+    }
+    else if (resizeIdleTicks_ >= 0 && ++resizeIdleTicks_ >= 30)
+    {
+        auto& uiState = processor_.getParametersState().state;
+        uiState.setProperty("uiWidth", size[0], nullptr);
+        uiState.setProperty("uiHeight", size[1], nullptr);
+        resizeIdleTicks_ = -1;
+    }
+}
+
+void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
+{
+    // Spectrum: grab the freshest 2048 mono samples, Hann -> FFT -> log bins.
+    auto& fifo = processor_.spectrumFifo_;
+    constexpr int fftSize = 2048;
+    if (fifo.getNumReady() >= fftSize && processor_.getSampleRate() > 0.0)
+    {
+        int start1, size1, start2, size2;
+        const int drop = fifo.getNumReady() - fftSize;
+        fifo.prepareToRead(drop, start1, size1, start2, size2);
+        fifo.finishedRead(drop);
+        fifo.prepareToRead(fftSize, start1, size1, start2, size2);
+        const auto copy = [&](int start, int size, int offset) {
+            for (int i = 0; i < size; ++i)
+                fftSamples_[(size_t) (offset + i)]
+                    = processor_.spectrumBuffer_[(size_t) (start + i)];
+        };
+        copy(start1, size1, 0);
+        copy(start2, size2, size1);
+        fifo.finishedRead(fftSize);
+
+        for (int i = 0; i < fftSize; ++i)
+            fftSamples_[(size_t) i] *= hann_[(size_t) i];
+        fft_.performRealOnlyForwardTransform(fftSamples_.data());
+
+        const int nBins = fftSize / 2;
+        const double binHz = processor_.getSampleRate() / fftSize;
+        std::array<float, v4h::EqCurve::kSpectrumPoints> fresh{};
+        int bin = 1; // skip DC
+        for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
+        {
+            const double fHi = 20.0 * std::pow(1000.0, (i + 1.0) / v4h::EqCurve::kSpectrumPoints);
+            const int last = juce::jlimit(bin, nBins - 1, (int) (fHi / binHz));
+            float mag = 0.0f;
+            for (; bin <= last && bin < nBins; ++bin)
+                mag = juce::jmax(mag, std::hypot(fftSamples_[(size_t) (2 * bin)],
+                    fftSamples_[(size_t) (2 * bin + 1)]));
+            // Hann coherent gain ~0.5: /N/4 maps a full-scale sine to 0 dB.
+            fresh[(size_t) i] = juce::jlimit(-96.0f, 6.0f,
+                20.0f * std::log10(mag / (float) (fftSize / 4) + 1e-6f));
+        }
+        // Fast attack, ~2.5 dB per frame decay.
+        for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
+            spectrumDb_[(size_t) i] = juce::jmax(fresh[(size_t) i], spectrumDb_[(size_t) i] - 2.5f);
+    }
+
+    // Refresh the visible EQ graphs at this frame rate (spectrum animation);
+    // other components repaint themselves via parameter attachments.
+    const double fs = processor_.getSampleRate();
+    for (auto& pg : groups_)
+    {
+        if (!pg->visible || pg->page != currentPage_ || pg->collapsed)
+            continue;
+        if (pg->curve != nullptr)
+        {
+            pg->curve->setSampleRate(fs);
+            pg->curve->repaint();
+        }
+    }
+}
+
+// --- presets & A/B ---------------------------------------------------------
+
+juce::File ViPER4HostAudioProcessorEditor::presetsDir() const
+{
+    auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("ViPER4Host")
+        .getChildFile("Presets");
+    dir.createDirectory();
+    return dir;
+}
+
+void ViPER4HostAudioProcessorEditor::refreshPresetList()
+{
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    presetBox_.clear(juce::dontSendNotification);
+    userPresetFiles_ = presetsDir().findChildFiles(juce::File::findFiles, false, "*.xml");
+    std::sort(userPresetFiles_.begin(), userPresetFiles_.end(),
+        [](const juce::File& a, const juce::File& b) {
+            return a.getFileName().compareNatural(b.getFileName()) < 0;
+        });
+    for (int i = 0; i < userPresetFiles_.size(); ++i)
+        presetBox_.addItem(userPresetFiles_[i].getFileNameWithoutExtension(), 100 + i);
+    if (userPresetFiles_.size() > 0)
+        presetBox_.addSeparator();
+    presetBox_.addItem(v4h::localisation::tr(lang, "presetSave"), 9999);
+    presetBox_.setTextWhenNothingSelected(v4h::localisation::tr(lang, "presetLabel"));
+}
+
+void ViPER4HostAudioProcessorEditor::savePresetDialog()
+{
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    auto* window = new juce::AlertWindow(v4h::localisation::tr(lang, "presetSave"), {},
+        juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor("name", "preset");
+    window->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    window->enterModalState(true, juce::ModalCallbackFunction::create(
+        [this, window](int result) {
+            if (result == 1)
+            {
+                const auto name = window->getTextEditorContents("name").trim();
+                if (name.isNotEmpty())
+                {
+                    auto xml = processor_.getParametersState().copyState().createXml();
+                    xml->setAttribute("presetName", name);
+                    xml->writeTo(presetsDir().getChildFile(name + ".xml"));
+                    refreshPresetList();
+                }
+            }
+        }),
+        true);
+}
+
+void ViPER4HostAudioProcessorEditor::activateAbSlot(int slot)
+{
+    if (slot == activeAbSlot_)
+        return;
+    abSlots_[activeAbSlot_] = processor_.getParametersState().copyState();
+    activeAbSlot_ = slot;
+    if (abSlots_[slot].isValid())
+        processor_.applyStateTree(abSlots_[slot]);
 }
 
 ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addGroup(
@@ -445,13 +635,25 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
             refreshFileStatus(*pg);
         }
     }
+
+    abCopy_.setButtonText(tr(lang, "abCopy"));
+    refreshPresetList(); // rebuilds the combo with translated preset names
 }
 
 void ViPER4HostAudioProcessorEditor::resized()
 {
     auto body = getLocalBounds();
     auto headerArea = body.removeFromTop(headerHeight).reduced(gap, 0);
-    titleLabel_.setBounds(headerArea.removeFromLeft(getWidth() / 2));
+    titleLabel_.setBounds(headerArea.removeFromLeft(110));
+
+    // presets + A/B sit between the title and the language selector
+    presetBox_.setBounds(headerArea.removeFromLeft(160).withSizeKeepingCentre(156, 26));
+    auto abArea = headerArea.removeFromLeft(112);
+    abButtons_[0].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 24));
+    abArea.removeFromLeft(4);
+    abButtons_[1].setBounds(abArea.removeFromLeft(34).withSizeKeepingCentre(30, 24));
+    abArea.removeFromLeft(4);
+    abCopy_.setBounds(abArea.withSizeKeepingCentre(36, 24));
 
     auto langArea = headerArea.removeFromRight(90 + gap + 120);
     languageLabel_.setBounds(langArea.removeFromLeft(90));

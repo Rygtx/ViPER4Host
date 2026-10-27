@@ -360,7 +360,8 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         pendingMutex_.unlock();
     }
 
-    if (parameters_.getRawParameterValue("bypass")->load(std::memory_order_relaxed) < 0.5f)
+    const bool bypassed = parameters_.getRawParameterValue("bypass")->load(std::memory_order_relaxed) >= 0.5f;
+    if (!bypassed)
     {
         viper::ViPERParams params{};
         buildEngineParams(params);
@@ -374,6 +375,21 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         // exposes no latency getter; we report zero latency. Revisit if the
         // engine grows a GetLatency API.
         engine_.Process(interleaved_, static_cast<uint32_t>(numFrames));
+    }
+
+    // Mono spectrum tap for the editor: downmix + push into the lock-free
+    // FIFO; the UI polls it on a timer. Best-effort by design.
+    {
+        int start1, size1, start2, size2;
+        spectrumFifo_.prepareToWrite(numFrames, start1, size1, start2, size2);
+        for (int i = 0; i < size1; ++i)
+            spectrumBuffer_[static_cast<size_t>(start1 + i)]
+                = (interleaved_[static_cast<size_t>(i) * 2]
+                      + interleaved_[static_cast<size_t>(i) * 2 + 1]) * 0.5f;
+        for (int i = 0; i < size2; ++i)
+            spectrumBuffer_[static_cast<size_t>(start2 + i)]
+                = (interleaved_[static_cast<size_t>(size1 + i) * 2]
+                      + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
     }
 
     float* outLeft = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
@@ -627,6 +643,15 @@ juce::String ViPER4HostAudioProcessor::loadDdcFile(const juce::String& path)
     }
     parameters_.state.setProperty("ddcPath", path, nullptr);
     return {};
+}
+
+void ViPER4HostAudioProcessor::applyStateTree(const juce::ValueTree& newState)
+{
+    // The uiLanguage property lives inside the state, so carry it across swaps.
+    const auto lang = getUiLanguage();
+    juce::ScopedLock lock(getCallbackLock());
+    parameters_.replaceState(newState);
+    parameters_.state.setProperty("uiLanguage", lang, nullptr);
 }
 
 juce::AudioProcessorEditor* ViPER4HostAudioProcessor::createEditor()

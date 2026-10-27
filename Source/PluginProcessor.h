@@ -38,6 +38,14 @@ public:
     juce::String getUiLanguage() const;
     void setUiLanguage(const juce::String& languageCode);
 
+    // Mono output tap feeding the editor's spectrum analyzer (lock-free FIFO,
+    // written by the audio thread, polled on a UI timer).
+    juce::AbstractFifo spectrumFifo_{16384};
+    float spectrumBuffer_[16384]{};
+
+    // Preset support: state swap that keeps the uiLanguage property alive.
+    void applyStateTree(const juce::ValueTree& newState);
+
     // File-based effects. These parse on the calling (message) thread and hand
     // the result to the audio thread via an atomic slot; returns an empty
     // string on success, else a localised error message key suffix.

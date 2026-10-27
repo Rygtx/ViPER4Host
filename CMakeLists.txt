@@ -108,6 +108,7 @@ target_compile_options(ViPER4Host
 target_link_libraries(ViPER4Host
   PRIVATE
     juce::juce_audio_utils
+    juce::juce_dsp # spectrum analyzer FFT
     ViPER4HostLocalisationData
     ViPERDSP
   PUBLIC

@@ -7,9 +7,11 @@
 #include "XoverStrip.h"
 
 #include <JuceHeader.h>
+#include <array>
 #include <vector>
 
-class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor
+class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                             private juce::Timer
 {
 public:
     // Category tab count; keep in sync with pageKeys in the .cpp.
@@ -22,6 +24,7 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
     struct ParamRow
     {
         juce::String paramId;
@@ -95,6 +98,14 @@ private:
     void selectLanguage();
     void pickFile(ParamGroup& group);
     void refreshFileStatus(ParamGroup& group);
+    // 30 Hz: polls the spectrum FIFO, re-runs the FFT and repaints the
+    // visible EQ graphs.
+    void pullMetersAndSpectrum();
+    // Presets & A/B compare.
+    juce::File presetsDir() const;
+    void refreshPresetList();
+    void savePresetDialog();
+    void activateAbSlot(int slot);
 
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
@@ -116,6 +127,23 @@ private:
     juce::Viewport viewport_;
     juce::Component content_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
+
+    // Presets & A/B compare. Slot state is captured on switch; edits always
+    // land in the live state (and in the active slot on the next switch).
+    juce::ComboBox presetBox_;
+    juce::TextButton abButtons_[2];
+    juce::TextButton abCopy_;
+    juce::ValueTree abSlots_[2];
+    int activeAbSlot_ = 0;
+    juce::Array<juce::File> userPresetFiles_;
+    // FFT pipeline for the spectrum underlay (mono output tap -> log bins).
+    juce::dsp::FFT fft_{11}; // 2^11 = 2048
+    // JUCE's real transform writes 2N floats for an N-point input.
+    std::array<float, 4096> fftSamples_{};
+    std::array<float, 2048> hann_{};
+    std::array<float, v4h::EqCurve::kSpectrumPoints> spectrumDb_{};
+    int resizeIdleTicks_ = -1; // -1 = size saved; counts up after a resize
+    std::array<int, 2> savedSize_{660, 600};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ViPER4HostAudioProcessorEditor)
 };
