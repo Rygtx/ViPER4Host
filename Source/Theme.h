@@ -144,17 +144,20 @@ public:
         auto bounds = button.getLocalBounds().toFloat().withSizeKeepingCentre(40.0f, 20.0f);
         const bool on = button.getToggleState();
 
+        // Fill inset so the 1px outline sits exactly on the silhouette — an
+        // outline drawn on the raw bounds adds a hard halo that reads square.
+        auto pill = bounds.reduced(0.75f);
         g.setColour(c(on ? accent : panelLight));
         if (over)
             g.setColour(c(on ? accentBright : outline).brighter(0.08f));
-        g.fillRoundedRectangle(bounds, bounds.getHeight() * 0.5f);
-        g.setColour(c(on ? accentBright : outline));
-        g.drawRoundedRectangle(bounds, bounds.getHeight() * 0.5f, 1.0f);
+        g.fillRoundedRectangle(pill, pill.getHeight() * 0.5f);
+        g.setColour(c(on ? accentBright : outline).withAlpha(0.6f));
+        g.drawRoundedRectangle(pill, pill.getHeight() * 0.5f, 1.0f);
 
-        const float knob = 14.0f;
-        const float x = on ? bounds.getRight() - knob - 3.0f : bounds.getX() + 3.0f;
+        const float knob = 15.0f;
+        const float x = on ? pill.getRight() - knob - 2.0f : pill.getX() + 2.0f;
         g.setColour(c(textBright));
-        g.fillEllipse(x, bounds.getCentreY() - knob * 0.5f, knob, knob);
+        g.fillEllipse(x, pill.getCentreY() - knob * 0.5f, knob, knob);
     }
 
     // Panel-style group: title sits on the top border line, fieldset-style.
