@@ -93,10 +93,14 @@ public:
         const float right = static_cast<float>(x + w) - margin;
         auto track = juce::Rectangle<float>(left, cy - radius, juce::jmax(right - left, 0.0f), trackH);
 
+        // JUCE maps min/max to the component's full width; without this clamp
+        // the thumb overhangs the track ends by its radius at min/max values.
+        const float pos = juce::jlimit(left, right, sliderPos);
+
         g.setColour(c(outline));
         g.fillRoundedRectangle(track, radius);
 
-        auto filled = track.withRight(juce::jlimit(track.getX(), track.getRight(), sliderPos));
+        auto filled = track.withRight(juce::jlimit(track.getX(), track.getRight(), pos));
         if (filled.getWidth() > 0.0f)
         {
             g.setColour(c(accent));
@@ -104,9 +108,9 @@ public:
         }
 
         g.setColour(c(textBright));
-        g.fillEllipse(sliderPos - 6.5f, cy - 6.5f, 13.0f, 13.0f);
+        g.fillEllipse(pos - 6.5f, cy - 6.5f, 13.0f, 13.0f);
         g.setColour(c(accent));
-        g.drawEllipse(sliderPos - 6.5f, cy - 6.5f, 13.0f, 13.0f, 2.0f);
+        g.drawEllipse(pos - 6.5f, cy - 6.5f, 13.0f, 13.0f, 2.0f);
     }
 
     // Rounded field with a small chevron; hover/focus gets the accent outline.
