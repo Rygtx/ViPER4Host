@@ -17,24 +17,34 @@ constexpr int siViewHeight = 190; // stereo imager field view
 constexpr int grMeterHeight = 26; // FET / limiter gain-reduction meter
 
 // Category tabs, in order. Count must match numPages in the header.
-const char* pageKeys[] = { "tabOutput", "tabDynamics", "tabEq", "tabBass", "tabStage", "tabFx" };
+const char* pageKeys[] = { "tabIn", "tabVhe", "tabEq", "tabStage", "tabDynamics",
+    "tabTone", "tabOutput" };
 static_assert(sizeof(pageKeys) / sizeof(pageKeys[0]) == ViPER4HostAudioProcessorEditor::numPages);
 
-// Which category tab a group lives on. 0 output, 1 dynamics, 2 eq, 3 bass,
-// 4 surround, 5 everything else.
+// Which category tab a group lives on. Tabs follow the engine's signal chain
+// (ViPER::Process order): convolver -> VHE -> DDC -> spectrum extend -> EQ ->
+// dynamic EQ -> field surround -> stereo imager -> diff surround -> playback
+// gain -> MBC -> FET -> dynamic system -> tube -> basses -> clarity -> cure ->
+// analogX -> reverb -> speaker correction -> LUFS -> limiter. Every tab is a
+// contiguous chain span, and within a tab groups keep that chain order too
+// (group creation below must match).
 int pageOf(const juce::String& gid)
 {
-    if (gid == "groupMaster" || gid == "groupAGC" || gid == "groupLufs")
-        return 0;
-    if (gid == "groupFet" || gid.startsWith("groupMbc"))
-        return 1;
-    if (gid == "groupEq" || gid.startsWith("groupDe") || gid == "groupCure")
-        return 2;
-    if (gid == "groupPsyBass" || gid == "groupBass" || gid == "groupBassMono" || gid == "groupSpecExt")
-        return 3;
-    if (gid == "groupField" || gid == "groupDiff" || gid == "groupSi" || gid == "groupDs")
-        return 4;
-    return 5;
+    if (gid == "groupConv" || gid == "groupDdc")
+        return 0; // input-side correction: kernel, DDC curve
+    if (gid == "groupVHE")
+        return 1; // headphone surround virtualisation
+    if (gid == "groupSpecExt" || gid == "groupEq" || gid == "groupDe")
+        return 2; // frequency response: exciter, EQ, dynamic EQ
+    if (gid == "groupField" || gid == "groupSi" || gid == "groupDiff")
+        return 3; // sound field / surround
+    if (gid == "groupAGC" || gid.startsWith("groupMbc") || gid == "groupFet" || gid == "groupDs")
+        return 4; // dynamics incl. dynamic system
+    if (gid == "groupTube" || gid == "groupPsyBass" || gid == "groupBass"
+        || gid == "groupBassMono" || gid == "groupClarity" || gid == "groupCure"
+        || gid == "groupAx" || gid == "groupReverb")
+        return 5; // colour: tube, bass harmonics, clarity, cure, analogX, reverb
+    return 6; // output: speaker correction, LUFS, limiter/master
 }
 
 // Band params (mbc3Threshold, de7Freq) share one label key per role across
@@ -67,17 +77,12 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
             * (float) i / (float) (hann_.size() - 1));
     spectrumDb_.fill(-96.0f);
 
-    // Sections in the same order as the parameter layout.
-    addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
-    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // output limiter GR
-    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
-    addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
-    addGroup("groupLufs", { "lufsEnable", "lufsTarget", "lufsMaxGain", "lufsSpeed" });
-    addGroup("groupFet", { "fetEnable", "fetThreshold", "fetRatio", "fetKnee", "fetKneeAuto",
-        "fetGain", "fetGainAuto", "fetAttack", "fetAttackAuto", "fetRelease", "fetReleaseAuto",
-        "fetKneeMulti", "fetMaxAttack", "fetMaxRelease", "fetCrest", "fetAdapt", "fetNoClip" });
-    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // FET compressor GR
-    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
+    // Sections follow the engine's signal chain (see pageOf above), so every
+    // tab lists its groups in processing order.
+    addGroup("groupConv", { "convEnable", "convCrossChannel" });
+    addGroup("groupDdc", { "ddcEnable" });
+    addGroup("groupVHE", { "vheEnable", "vheQuality" });
+    addGroup("groupSpecExt", { "specExtEnable", "specExtStrength", "specExtExciter" });
 
     {
         auto& pg = *addGroup("groupEq", { "eqEnable", "eqBandCount" });
@@ -102,25 +107,13 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
                 deBandRows_.push_back(row.get()); // creation order == bind order
     }
 
-    addGroup("groupPsyBass", { "pBassEnable", "pBassCutoff", "pBassIntensity", "pBassHarmonicOrder", "pBassOriginalLevel" });
-    addGroup("groupBass", { "bassEnable", "bassMode", "bassFreq", "bassGain", "bassAntiPop" });
-    addGroup("groupBassMono", { "bassMonoEnable", "bassMonoMode", "bassMonoFreq", "bassMonoGain", "bassMonoAntiPop" });
-    addGroup("groupSpecExt", { "specExtEnable", "specExtStrength", "specExtExciter" });
-    addGroup("groupConv", { "convEnable", "convCrossChannel" });
-    addGroup("groupDdc", { "ddcEnable" });
     addGroup("groupField", { "fieldEnable", "fieldWidening", "fieldMidImage", "fieldDepth" });
-    addGroup("groupDiff", { "diffEnable", "diffDelay", "diffReverse", "diffMix", "diffLpCutoff" });
     addGroup("groupSi", { "siEnable" });
     groups_.back()->siView = std::make_unique<v4h::SiView>(processor_.getParametersState());
     groups_.back()->group.addAndMakeVisible(*groups_.back()->siView);
-    addGroup("groupVHE", { "vheEnable", "vheQuality" });
-    addGroup("groupReverb", { "reverbEnable", "reverbRoomSize", "reverbWidth", "reverbDamp", "reverbWet", "reverbDry" });
-    addGroup("groupDs", { "dsEnable", "dsXLow", "dsXHigh", "dsYLow", "dsYHigh", "dsSideGainLow", "dsSideGainHigh", "dsStrength" });
-    addGroup("groupClarity", { "clarityEnable", "clarityMode", "clarityGain" });
-    addGroup("groupCure", { "cureEnable", "curePreset" });
-    addGroup("groupTube", { "tubeEnable", "tubeModel", "tubeDrive", "tubeMix" });
-    addGroup("groupAx", { "axEnable", "axMode" });
-    addGroup("groupSpk", { "spkEnable" });
+    addGroup("groupDiff", { "diffEnable", "diffDelay", "diffReverse", "diffMix", "diffLpCutoff" });
+
+    addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
     {
         auto& pg = *addGroup("groupMbc", { "mbcEnable", "mbcBandCount" });
         pg.strip = std::make_unique<v4h::XoverStrip>(processor_.getParametersState());
@@ -143,6 +136,32 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         for (auto& row : pg.rows)
             mbcBandRows_.push_back(row.get()); // creation order == bind order
     }
+
+    addGroup("groupFet", { "fetEnable", "fetThreshold", "fetRatio", "fetKnee", "fetKneeAuto",
+        "fetGain", "fetGainAuto", "fetAttack", "fetAttackAuto", "fetRelease", "fetReleaseAuto",
+        "fetKneeMulti", "fetMaxAttack", "fetMaxRelease", "fetCrest", "fetAdapt", "fetNoClip" });
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // FET compressor GR
+    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
+    addGroup("groupDs", { "dsEnable", "dsXLow", "dsXHigh", "dsYLow", "dsYHigh",
+        "dsSideGainLow", "dsSideGainHigh", "dsStrength" });
+
+    addGroup("groupTube", { "tubeEnable", "tubeModel", "tubeDrive", "tubeMix" });
+    addGroup("groupPsyBass", { "pBassEnable", "pBassCutoff", "pBassIntensity",
+        "pBassHarmonicOrder", "pBassOriginalLevel" });
+    addGroup("groupBass", { "bassEnable", "bassMode", "bassFreq", "bassGain", "bassAntiPop" });
+    addGroup("groupBassMono", { "bassMonoEnable", "bassMonoMode", "bassMonoFreq",
+        "bassMonoGain", "bassMonoAntiPop" });
+    addGroup("groupClarity", { "clarityEnable", "clarityMode", "clarityGain" });
+    addGroup("groupCure", { "cureEnable", "curePreset" });
+    addGroup("groupAx", { "axEnable", "axMode" });
+    addGroup("groupReverb", { "reverbEnable", "reverbRoomSize", "reverbWidth", "reverbDamp",
+        "reverbWet", "reverbDry" });
+
+    addGroup("groupSpk", { "spkEnable" });
+    addGroup("groupLufs", { "lufsEnable", "lufsTarget", "lufsMaxGain", "lufsSpeed" });
+    addGroup("groupMaster", { "limiterThreshold", "limiterVolume", "limiterPan" });
+    groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // output limiter GR
+    groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
 
     // Band-count params drive which band rows/groups are shown.
     for (const char* id : { "eqBandCount", "deBandCount", "mbcBandCount" })

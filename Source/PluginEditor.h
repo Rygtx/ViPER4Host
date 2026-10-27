@@ -16,7 +16,7 @@ class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor,
 {
 public:
     // Category tab count; keep in sync with pageKeys in the .cpp.
-    static constexpr int numPages = 6;
+    static constexpr int numPages = 7;
 
     explicit ViPER4HostAudioProcessorEditor(ViPER4HostAudioProcessor&);
     ~ViPER4HostAudioProcessorEditor() override;
