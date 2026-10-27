@@ -75,6 +75,7 @@ target_sources(ViPER4Host
   PRIVATE
     Source/Localisation.cpp
     Source/Localisation.h
+    Source/EqCurve.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/PluginProcessor.cpp

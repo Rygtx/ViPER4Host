@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EqCurve.h"
 #include "PluginProcessor.h"
 #include "Theme.h"
 
@@ -48,6 +49,9 @@ private:
         juce::Label fileStatus;
         juce::String fileKind; // APVTS state property holding the path
         bool hasFileRow = false;
+        // Curve editor (graphic EQ / dynamic EQ groups): a child of the group,
+        // laid out between the title bar and the rows.
+        std::unique_ptr<v4h::EqCurve> curve;
         // First "*Enable" param of the group, if any: the switch doubles as
         // the fold control (off = title bar only) and refreshCollapse() runs
         // whenever it changes.
@@ -64,7 +68,16 @@ private:
     // Re-derives every group's collapsed state from its enable switch (band
     // sub-groups also follow their parent feature switch), then relayouts.
     void refreshCollapse();
-    void addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
+    // Creates the group and its rows; returns it so callers can attach extras
+    // (curve editor, file row) to it.
+    ParamGroup* addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
+    // (Re)binds a row's widgets and attachments to one parameter. Used both by
+    // addGroup and by selectDeBand, which re-points the DynEQ detail rows at
+    // whichever band the curve editor selected.
+    void bindRow(ParamRow& row, const juce::String& id, const juce::String& languageCode,
+        juce::Component& parent);
+    // Points the DynEQ detail rows (Freq..Type) at band index `band` (0-based).
+    void selectDeBand(int band);
     // Hides rows/groups beyond the active band counts (eqBandCount, deBandCount,
     // mbcBandCount), then relayouts.
     void updateBandVisibility();
@@ -78,6 +91,9 @@ private:
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
+    // DynEQ detail rows (deNFreq..deNType), in bind order — one per suffix.
+    std::vector<ParamRow*> deBandRows_;
+    int selectedDeBand_ = 0;
     // Follow eqBandCount / deBandCount / mbcBandCount to show/hide band rows.
     std::vector<std::unique_ptr<juce::ParameterAttachment>> bandCountAttachments_;
     juce::Label titleLabel_;
