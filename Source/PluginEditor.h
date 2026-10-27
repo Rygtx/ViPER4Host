@@ -2,7 +2,9 @@
 
 #include "EqCurve.h"
 #include "PluginProcessor.h"
+#include "SiView.h"
 #include "Theme.h"
+#include "XoverStrip.h"
 
 #include <JuceHeader.h>
 #include <vector>
@@ -52,6 +54,9 @@ private:
         // Curve editor (graphic EQ / dynamic EQ groups): a child of the group,
         // laid out between the title bar and the rows.
         std::unique_ptr<v4h::EqCurve> curve;
+        // Same slot for the MBC crossover strip and the stereo imager view.
+        std::unique_ptr<v4h::XoverStrip> strip;
+        std::unique_ptr<v4h::SiView> siView;
         // First "*Enable" param of the group, if any: the switch doubles as
         // the fold control (off = title bar only) and refreshCollapse() runs
         // whenever it changes.
@@ -69,15 +74,18 @@ private:
     // sub-groups also follow their parent feature switch), then relayouts.
     void refreshCollapse();
     // Creates the group and its rows; returns it so callers can attach extras
-    // (curve editor, file row) to it.
-    ParamGroup* addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
+    // (curve editor, file row) to it. titleEnable=false keeps any "*Enable"
+    // param as a plain row (MBC's selected-band panel has no title switch).
+    ParamGroup* addGroup(const juce::String& groupId, std::vector<juce::String> paramIds,
+        bool titleEnable = true);
     // (Re)binds a row's widgets and attachments to one parameter. Used both by
-    // addGroup and by selectDeBand, which re-points the DynEQ detail rows at
-    // whichever band the curve editor selected.
+    // addGroup and by selectDeBand/selectMbcBand, which re-point the detail
+    // rows at whichever band the strip/curve selected.
     void bindRow(ParamRow& row, const juce::String& id, const juce::String& languageCode,
-        juce::Component& parent);
-    // Points the DynEQ detail rows (Freq..Type) at band index `band` (0-based).
+        juce::Component& parent, bool titleEnable = true);
+    // Points the DynEQ / MBC detail rows at band index `band` (0-based).
     void selectDeBand(int band);
+    void selectMbcBand(int band);
     // Hides rows/groups beyond the active band counts (eqBandCount, deBandCount,
     // mbcBandCount), then relayouts.
     void updateBandVisibility();
@@ -91,9 +99,9 @@ private:
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
     std::vector<std::unique_ptr<ParamGroup>> groups_;
-    // DynEQ detail rows (deNFreq..deNType), in bind order — one per suffix.
-    std::vector<ParamRow*> deBandRows_;
-    int selectedDeBand_ = 0;
+    // DynEQ / MBC detail rows, in bind order — one per suffix.
+    std::vector<ParamRow*> deBandRows_, mbcBandRows_;
+    int selectedDeBand_ = 0, selectedMbcBand_ = 0;
     // Follow eqBandCount / deBandCount / mbcBandCount to show/hide band rows.
     std::vector<std::unique_ptr<juce::ParameterAttachment>> bandCountAttachments_;
     juce::Label titleLabel_;

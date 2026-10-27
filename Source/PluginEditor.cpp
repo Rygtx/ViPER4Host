@@ -12,6 +12,8 @@ constexpr int rowHeight = 30;
 constexpr int titleHeight = 24;
 constexpr int labelWidth = 130;
 constexpr int curveHeight = 210; // EQ / DynEQ response graph
+constexpr int stripHeight = 60;  // MBC crossover strip
+constexpr int siViewHeight = 190; // stereo imager field view
 
 // Category tabs, in order. Count must match numPages in the header.
 const char* pageKeys[] = { "tabOutput", "tabDynamics", "tabEq", "tabBass", "tabStage", "tabFx" };
@@ -94,7 +96,9 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addGroup("groupDdc", { "ddcEnable" });
     addGroup("groupField", { "fieldEnable", "fieldWidening", "fieldMidImage", "fieldDepth" });
     addGroup("groupDiff", { "diffEnable", "diffDelay", "diffReverse", "diffMix", "diffLpCutoff" });
-    addGroup("groupSi", { "siEnable", "siLowWidth", "siMidWidth", "siHighWidth", "siLowCrossover", "siHighCrossover" });
+    addGroup("groupSi", { "siEnable" });
+    groups_.back()->siView = std::make_unique<v4h::SiView>(processor_.getParametersState());
+    groups_.back()->group.addAndMakeVisible(*groups_.back()->siView);
     addGroup("groupVHE", { "vheEnable", "vheQuality" });
     addGroup("groupReverb", { "reverbEnable", "reverbRoomSize", "reverbWidth", "reverbDamp", "reverbWet", "reverbDry" });
     addGroup("groupDs", { "dsEnable", "dsXLow", "dsXHigh", "dsYLow", "dsYHigh", "dsSideGainLow", "dsSideGainHigh", "dsStrength" });
@@ -103,14 +107,26 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addGroup("groupTube", { "tubeEnable", "tubeModel", "tubeDrive", "tubeMix" });
     addGroup("groupAx", { "axEnable", "axMode" });
     addGroup("groupSpk", { "spkEnable" });
-    addGroup("groupMbc", { "mbcEnable", "mbcBandCount", "mbcCross1", "mbcCross2", "mbcCross3", "mbcCross4" });
-    for (int b = 1; b <= 5; ++b)
     {
-        const auto pfx = "mbc" + juce::String(b);
-        addGroup("groupMbcB" + juce::String(b), { pfx + "Enable", pfx + "Threshold", pfx + "Ratio",
-            pfx + "Knee", pfx + "KneeAuto", pfx + "Gain", pfx + "GainAuto", pfx + "Attack",
-            pfx + "AttackAuto", pfx + "Release", pfx + "ReleaseAuto", pfx + "KneeMulti",
-            pfx + "MaxAttack", pfx + "MaxRelease", pfx + "Crest", pfx + "Adapt", pfx + "NoClip" });
+        auto& pg = *addGroup("groupMbc", { "mbcEnable", "mbcBandCount" });
+        pg.strip = std::make_unique<v4h::XoverStrip>(processor_.getParametersState());
+        // Clicking a region selects that band; the detail rows follow.
+        pg.strip->onSelect = [this](int band) { selectMbcBand(band); };
+        pg.group.addAndMakeVisible(*pg.strip);
+    }
+
+    {
+        // One detail panel for the selected MBC band (titleEnable=false so
+        // mbcNEnable is a plain toggle row, not this group's fold switch).
+        static const char* suffixes[] = { "Enable", "Threshold", "Ratio", "Knee", "KneeAuto",
+            "Gain", "GainAuto", "Attack", "AttackAuto", "Release", "ReleaseAuto", "KneeMulti",
+            "MaxAttack", "MaxRelease", "Crest", "Adapt", "NoClip" };
+        std::vector<juce::String> ids;
+        for (const char* s : suffixes)
+            ids.push_back(juce::String("mbc1") + s);
+        auto& pg = *addGroup("groupMbcSel", ids, false);
+        for (auto& row : pg.rows)
+            mbcBandRows_.push_back(row.get()); // creation order == bind order
     }
 
     // Band-count params drive which band rows/groups are shown.
@@ -174,7 +190,7 @@ ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor()
 }
 
 ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addGroup(
-    const juce::String& groupId, std::vector<juce::String> paramIds)
+    const juce::String& groupId, std::vector<juce::String> paramIds, bool titleEnable)
 {
     auto pg = std::make_unique<ParamGroup>();
     pg->groupId = groupId;
@@ -184,21 +200,25 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     {
         auto row = std::make_unique<ParamRow>();
         // The group's "*Enable" switch lives in the group title bar...
-        bindRow(*row, id, lang, id.endsWith("Enable") ? (juce::Component&) pg->group : content_);
+        bindRow(*row, id, lang, id.endsWith("Enable") && titleEnable
+            ? (juce::Component&) pg->group : content_, titleEnable);
         pg->rows.push_back(std::move(row));
     }
 
     // The group's enable switch (if it has one) doubles as the fold control.
-    const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
-        [](const juce::String& id) { return id.endsWith("Enable"); });
-    if (enableIt != paramIds.end())
+    if (titleEnable)
     {
-        pg->enableParamId = *enableIt;
-        pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
-            *processor_.getParametersState().getParameter(pg->enableParamId),
-            [this](float) { refreshCollapse(); },
-            nullptr);
-        pg->enableAttachment->sendInitialUpdate();
+        const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
+            [](const juce::String& id) { return id.endsWith("Enable"); });
+        if (enableIt != paramIds.end())
+        {
+            pg->enableParamId = *enableIt;
+            pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
+                *processor_.getParametersState().getParameter(pg->enableParamId),
+                [this](float) { refreshCollapse(); },
+                nullptr);
+            pg->enableAttachment->sendInitialUpdate();
+        }
     }
 
     if (groupId == "groupConv" || groupId == "groupDdc")
@@ -221,17 +241,17 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     return groups_.back().get();
 }
 
-// Row construction shared by addGroup and selectDeBand (which re-points the
-// DynEQ detail rows at a different band). Attachments are rebuilt from
-// scratch, so rebinding is just bindRow with a new id.
+// Row construction shared by addGroup and the select*Band rebinding helpers.
+// Attachments are rebuilt from scratch, so rebinding is just bindRow with a
+// new id. titleEnable=false keeps "*Enable" params as plain toggle rows.
 void ViPER4HostAudioProcessorEditor::bindRow(ParamRow& row, const juce::String& id,
-    const juce::String& languageCode, juce::Component& parent)
+    const juce::String& languageCode, juce::Component& parent, bool titleEnable)
 {
     auto& apvts = processor_.getParametersState();
     auto* param = apvts.getParameter(id);
     jassert(param != nullptr);
     row.paramId = id;
-    row.isEnable = id.endsWith("Enable");
+    row.isEnable = titleEnable && id.endsWith("Enable");
     row.sliderAttachment.reset();
     row.comboAttachment.reset();
     row.buttonAttachment.reset();
@@ -275,9 +295,20 @@ void ViPER4HostAudioProcessorEditor::selectDeBand(int band)
         bindRow(*deBandRows_[i], pfx + suffixes[i], lang, content_);
 }
 
+void ViPER4HostAudioProcessorEditor::selectMbcBand(int band)
+{
+    selectedMbcBand_ = juce::jlimit(0, (int) mbcBandRows_.size() - 1, band);
+    static const char* suffixes[] = { "Enable", "Threshold", "Ratio", "Knee", "KneeAuto",
+        "Gain", "GainAuto", "Attack", "AttackAuto", "Release", "ReleaseAuto", "KneeMulti",
+        "MaxAttack", "MaxRelease", "Crest", "Adapt", "NoClip" };
+    const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    const auto pfx = "mbc" + juce::String(selectedMbcBand_ + 1);
+    for (size_t i = 0; i < mbcBandRows_.size() && i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
+        bindRow(*mbcBandRows_[i], pfx + suffixes[i], lang, content_, false);
+}
+
 // A folded group is just its title bar; the enable switch in that bar is the
-// only control. MBC band sub-groups additionally follow their parent feature
-// switch.
+// only control. The MBC detail panel additionally follows mbcEnable.
 void ViPER4HostAudioProcessorEditor::refreshCollapse()
 {
     auto& apvts = processor_.getParametersState();
@@ -290,7 +321,7 @@ void ViPER4HostAudioProcessorEditor::refreshCollapse()
         bool expanded = true;
         if (pg->enableParamId.isNotEmpty())
             expanded = isOn(pg->enableParamId);
-        if (pg->groupId.startsWith("groupMbcB"))
+        if (pg->groupId == "groupMbcSel")
             expanded = expanded && isOn("mbcEnable");
         pg->collapsed = !expanded;
     }
@@ -310,8 +341,7 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
     const int deN = bandCount("deBandCount") + 1;
     const int mbcN = bandCount("mbcBandCount") + 1;
 
-    // The EQ graphs follow the band counts; only MBC has band-count rows left
-    // (N bands need N-1 crossovers).
+    // The EQ / MBC graphics follow the band counts.
     for (auto& pg : groups_)
     {
         const auto& gid = pg->groupId;
@@ -327,18 +357,14 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
         }
         else if (gid == "groupMbc")
         {
-            for (auto& row : pg->rows)
-                if (row->paramId.startsWith("mbcCross"))
-                    row->bandVisible = row->paramId.fromFirstOccurrenceOf("mbcCross", false, false).getIntValue() < mbcN;
-        }
-        else if (gid.startsWith("groupMbcB"))
-        {
-            const int band = gid.fromFirstOccurrenceOf("groupMbcB", false, false).getIntValue();
-            pg->visible = band <= mbcN;
+            if (pg->strip != nullptr)
+                pg->strip->setBands(mbcN);
         }
     }
     if (selectedDeBand_ >= deN)
         selectDeBand(deN - 1); // detail rows follow the shrunken band count
+    if (selectedMbcBand_ >= mbcN)
+        selectMbcBand(mbcN - 1);
     resized();
 }
 
@@ -482,11 +508,31 @@ void ViPER4HostAudioProcessorEditor::resized()
         }
 
         const bool collapsed = pg->collapsed;
-        const int curveH = pg->curve != nullptr && !collapsed ? curveHeight : 0;
+        // Graphic strip (curve / crossover / field view) between title and rows.
+        int graphicH = 0;
         if (pg->curve != nullptr)
-            pg->curve->setVisible(curveH != 0);
+        {
+            graphicH = !collapsed ? curveHeight : 0;
+            pg->curve->setVisible(graphicH != 0);
+            if (graphicH != 0)
+                pg->curve->setBounds(8, titleHeight, columnWidth - 16, curveHeight);
+        }
+        else if (pg->strip != nullptr)
+        {
+            graphicH = !collapsed ? stripHeight : 0;
+            pg->strip->setVisible(graphicH != 0);
+            if (graphicH != 0)
+                pg->strip->setBounds(8, titleHeight, columnWidth - 16, stripHeight);
+        }
+        else if (pg->siView != nullptr)
+        {
+            graphicH = !collapsed ? siViewHeight : 0;
+            pg->siView->setVisible(graphicH != 0);
+            if (graphicH != 0)
+                pg->siView->setBounds(8, titleHeight, columnWidth - 16, siViewHeight);
+        }
         const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
-        const int height = titleHeight + (collapsed ? 0 : curveH + rowCount * rowHeight + fileRowHeight);
+        const int height = titleHeight + (collapsed ? 0 : graphicH + rowCount * rowHeight + fileRowHeight);
 
         pg->group.setBounds(gap, y, columnWidth, height);
         for (auto& row : pg->rows)
@@ -495,10 +541,7 @@ void ViPER4HostAudioProcessorEditor::resized()
 
         if (!collapsed)
         {
-            // Curve is a child of pg->group: bounds are group-relative.
-            if (curveH != 0)
-                pg->curve->setBounds(8, titleHeight, columnWidth - 16, curveHeight);
-            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight + curveH, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight + graphicH, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
             for (auto& row : pg->rows)
             {
                 if (!row->label.isVisible())

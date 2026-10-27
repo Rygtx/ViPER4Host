@@ -123,6 +123,7 @@
     "siHighWidth": "高频宽度",
     "siLowCrossover": "低频分频点",
     "siHighCrossover": "高频分频点",
+    "siZoneLow": "低频", "siZoneMid": "中频", "siZoneHigh": "高频",
 
     "groupVHE": "耳机环绕＋",
     "vheQuality": "环绕级别",
@@ -170,11 +171,13 @@
     "groupSpk": "音箱校正",
 
     "groupMbc": "多段压缩器",
+    "groupMbcSel": "压缩段详情",
     "mbcBandCount": "段数",
     "mbcCross1": "分频点 1", "mbcCross2": "分频点 2",
     "mbcCross3": "分频点 3", "mbcCross4": "分频点 4",
     "groupMbcB1": "多段压缩 第1段", "groupMbcB2": "多段压缩 第2段", "groupMbcB3": "多段压缩 第3段",
     "groupMbcB4": "多段压缩 第4段", "groupMbcB5": "多段压缩 第5段",
+    "mbcBandEnable": "启用",
     "mbcBandThreshold": "阈值",
     "mbcBandRatio": "压缩比",
     "mbcBandKnee": "拐点宽度",

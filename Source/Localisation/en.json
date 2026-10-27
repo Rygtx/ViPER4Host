@@ -123,6 +123,7 @@
     "siHighWidth": "High Width",
     "siLowCrossover": "Low Crossover",
     "siHighCrossover": "High Crossover",
+    "siZoneLow": "Low", "siZoneMid": "Mid", "siZoneHigh": "High",
 
     "groupVHE": "Headphone Surround+",
     "vheQuality": "VHE Level",
@@ -170,11 +171,13 @@
     "groupSpk": "Speaker Correction",
 
     "groupMbc": "Multiband Compressor",
+    "groupMbcSel": "Band Detail",
     "mbcBandCount": "Bands",
     "mbcCross1": "Crossover 1", "mbcCross2": "Crossover 2",
     "mbcCross3": "Crossover 3", "mbcCross4": "Crossover 4",
     "groupMbcB1": "MBC Band 1", "groupMbcB2": "MBC Band 2", "groupMbcB3": "MBC Band 3",
     "groupMbcB4": "MBC Band 4", "groupMbcB5": "MBC Band 5",
+    "mbcBandEnable": "Enable",
     "mbcBandThreshold": "Threshold",
     "mbcBandRatio": "Ratio",
     "mbcBandKnee": "Knee Width",
