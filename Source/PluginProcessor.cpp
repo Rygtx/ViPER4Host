@@ -521,6 +521,8 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         spectrumBuffer_[static_cast<size_t>(start2 + i)]
             = (interleaved_[static_cast<size_t>(size1 + i) * 2]
                   + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
+    // 忘了推进写指针的话 FIFO 会永远为空,频谱分支永远不触发。
+    spectrumFifo_.finishedWrite(size1 + size2);
 
     float* outLeft = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
     float* outRight = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;

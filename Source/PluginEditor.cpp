@@ -77,10 +77,14 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 {
     setLookAndFeel(&lookAndFeel_);
 
-    // 频谱分析器初始化：Hann 窗 + 静音初始频谱。
-    for (size_t i = 0; i < hann_.size(); ++i)
-        hann_[i] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi
-            * (float) i / (float) (hann_.size() - 1));
+    // 频谱分析器初始化：长短两个 Hann 窗 + 静音初始频谱。
+    const auto initHann = [](auto& h) {
+        for (size_t i = 0; i < h.size(); ++i)
+            h[i] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi
+                * (float) i / (float) (h.size() - 1));
+    };
+    initHann(hann_);
+    initHann(hannLong_);
     spectrumDb_.fill(-96.0f);
 
     // 分区顺序跟随引擎信号链（见上面的 pageOf），所以每个页签里的
@@ -257,7 +261,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         codes.add(option.code);
     languageBox_.setSelectedId(codes.indexOf(language) + 1, juce::dontSendNotification);
     relabelAll(language);
-    startTimerHz(30);
+    startTimerHz(60);
 }
 
 void ViPER4HostAudioProcessorEditor::selectLanguage()
@@ -290,7 +294,7 @@ void ViPER4HostAudioProcessorEditor::timerCallback()
         savedSize_ = size;
         resizeIdleTicks_ = 0;
     }
-    else if (resizeIdleTicks_ >= 0 && ++resizeIdleTicks_ >= 30)
+    else if (resizeIdleTicks_ >= 0 && ++resizeIdleTicks_ >= 60)
     {
         auto& uiState = processor_.getParametersState().state;
         uiState.setProperty("uiWidth", size[0], nullptr);
@@ -314,48 +318,136 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
     for (int b = 0; b < 10; ++b)
         deGainDb_[b] = isOn("deEnable") ? m.deGainDb[(size_t) b].load() : 0.0f;
 
-    // 频谱：取最新的 2048 个单声道样本，Hann 窗 -> FFT -> 对数频点。
+    // 频谱：多分辨率 FFT。低频带用 8192 点长窗（5.9 Hz 分辨率，20 Hz 附近
+    // 才能对齐调节点），高频带用 2048 点短窗（瞬态不糊）。带内取 bin 最大
+    // 值；没有 bin 覆盖的窄带按 log 频率在相邻 bin 间插值；最后跨带 1-2-1
+    // 平滑，去掉低频阶梯和高频毛刺。
     auto& fifo = processor_.spectrumFifo_;
-    constexpr int fftSize = 2048;
-    if (fifo.getNumReady() >= fftSize && processor_.getSampleRate() > 0.0)
+    constexpr int fftLong = 8192, fftShort = 2048;
+    constexpr double crossHz = 400.0; // 低于此频率用长窗
+    // 滑动窗：每帧把 FIFO 里新到的样本全部取走追加到窗尾（攒够 8192 才
+    // 跑一次的话，48 kHz 下频谱只有约 5 fps，看着卡）。
+    if (processor_.getSampleRate() > 0.0)
     {
-        int start1, size1, start2, size2;
-        const int drop = fifo.getNumReady() - fftSize;
-        fifo.prepareToRead(drop, start1, size1, start2, size2);
-        fifo.finishedRead(drop);
-        fifo.prepareToRead(fftSize, start1, size1, start2, size2);
-        const auto copy = [&](int start, int size, int offset) {
-            for (int i = 0; i < size; ++i)
-                fftSamples_[(size_t) (offset + i)]
-                    = processor_.spectrumBuffer_[(size_t) (start + i)];
+        const auto append = [&](const float* src, int size) {
+            size = juce::jmin(size, fftLong);
+            if (size <= 0)
+                return;
+            const int overflow = juce::jmax(0, windowFill_ + size - fftLong);
+            if (overflow > 0)
+            {
+                std::copy(window_.begin() + overflow, window_.begin() + windowFill_,
+                    window_.begin());
+                windowFill_ -= overflow;
+            }
+            std::copy_n(src, size, window_.begin() + windowFill_);
+            windowFill_ += size;
         };
-        copy(start1, size1, 0);
-        copy(start2, size2, size1);
-        fifo.finishedRead(fftSize);
+        while (fifo.getNumReady() > 0)
+        {
+            int start1, size1, start2, size2;
+            fifo.prepareToRead(fifo.getNumReady(), start1, size1, start2, size2);
+            if (size1 + size2 <= 0)
+                break;
+            if (size1 > 0)
+                append(processor_.spectrumBuffer_ + start1, size1);
+            if (size2 > 0)
+                append(processor_.spectrumBuffer_ + start2, size2);
+            fifo.finishedRead(size1 + size2);
+        }
+    }
+    if (windowFill_ >= fftLong && processor_.getSampleRate() > 0.0)
+    {
+        const double fs = processor_.getSampleRate();
 
-        for (int i = 0; i < fftSize; ++i)
-            fftSamples_[(size_t) i] *= hann_[(size_t) i];
-        fft_.performRealOnlyForwardTransform(fftSamples_.data());
+        // 把两个窗各自 FFT 出的可用 bin 收成 (log2 f, dB) 点列。
+        struct SpecPt { double logf; float db; };
+        constexpr int kMaxPts = 1280; // 短窗最多 1023 个 bin + 长窗约 70 个
+        std::array<SpecPt, kMaxPts> pts{};
+        int nPts = 0;
+        const auto collect = [&](const float* spec, int fftN, double fFrom, double fTo) {
+            const int nBins = fftN / 2;
+            const double binHz = fs / fftN;
+            const int b0 = juce::jlimit(1, nBins - 1, (int) std::ceil(14.0 / binHz));
+            const int b1 = juce::jlimit(b0, nBins - 1, (int) (fTo / binHz));
+            for (int b = b0; b <= b1; ++b)
+            {
+                if (nPts >= kMaxPts || b * binHz < fFrom)
+                    continue;
+                const float mag = std::hypot(spec[(size_t) (2 * b)], spec[(size_t) (2 * b + 1)]);
+                pts[(size_t) nPts++] = { std::log2((double) b * binHz),
+                    juce::jlimit(-120.0f, 12.0f,
+                        20.0f * std::log10(mag / (float) (fftN / 4) + 1e-6f)) };
+            }
+        };
+        // 长窗在 fftSamples_ 上原地变换（JUCE 实数变换要 2N 个浮点）；
+        // 短窗要的时域样本先拷走。
+        std::copy(window_.begin(), window_.end(), fftSamples_.begin());
+        for (int i = 0; i < fftShort; ++i)
+            fftShortBuf_[(size_t) i] = window_[(size_t) (fftLong - fftShort + i)];
+        for (int i = 0; i < fftLong; ++i)
+            fftSamples_[(size_t) i] *= hannLong_[(size_t) i];
+        fftLong_.performRealOnlyForwardTransform(fftSamples_.data());
+        collect(fftSamples_.data(), fftLong, 0.0, crossHz);
+        for (int i = 0; i < fftShort; ++i)
+            fftShortBuf_[(size_t) i] *= hann_[(size_t) i];
+        fft_.performRealOnlyForwardTransform(fftShortBuf_.data());
+        collect(fftShortBuf_.data(), fftShort, crossHz, fs * 0.5);
 
-        const int nBins = fftSize / 2;
-        const double binHz = processor_.getSampleRate() / fftSize;
+        // 128 个对数频带：带内有 bin 取最大值；没有则按 log 频率在相邻 bin
+        // 间线性插值（低频 bin 稀疏，画成 0 会在左侧留一堵 -96 的悬崖）。
         std::array<float, v4h::EqCurve::kSpectrumPoints> fresh{};
-        int bin = 1; // 跳过 DC
+        int p = 0;
         for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
         {
-            const double fHi = 20.0 * std::pow(1000.0, (i + 1.0) / v4h::EqCurve::kSpectrumPoints);
-            const int last = juce::jlimit(bin, nBins - 1, (int) (fHi / binHz));
-            float mag = 0.0f;
-            for (; bin <= last && bin < nBins; ++bin)
-                mag = juce::jmax(mag, std::hypot(fftSamples_[(size_t) (2 * bin)],
-                    fftSamples_[(size_t) (2 * bin + 1)]));
-            // Hann 窗相干增益约 0.5：/N/4 使满幅正弦对应 0 dB。
-            fresh[(size_t) i] = juce::jlimit(-96.0f, 6.0f,
-                20.0f * std::log10(mag / (float) (fftSize / 4) + 1e-6f));
+            const double lLo = std::log2(20.0 * std::pow(1000.0, i / 128.0));
+            const double lHi = std::log2(20.0 * std::pow(1000.0, (i + 1.0) / 128.0));
+            while (p < nPts && pts[(size_t) p].logf < lLo)
+                ++p;
+            int q = p;
+            float mag = -120.0f;
+            bool any = false;
+            while (q < nPts && pts[(size_t) q].logf <= lHi)
+            {
+                mag = juce::jmax(mag, pts[(size_t) q].db);
+                ++q;
+                any = true;
+            }
+            if (any)
+            {
+                fresh[(size_t) i] = mag;
+            }
+            else if (p > 0 && q < nPts) // 带内无 bin：相邻 bin 的 dB 插值
+            {
+                const double mid = 0.5 * (lLo + lHi);
+                const double t = (mid - pts[(size_t) (p - 1)].logf)
+                    / (pts[(size_t) q].logf - pts[(size_t) (p - 1)].logf);
+                fresh[(size_t) i] = (float) (juce::jlimit(0.0, 1.0, t)
+                    * (pts[(size_t) q].db - pts[(size_t) (p - 1)].db) + pts[(size_t) (p - 1)].db);
+            }
+            else // 边缘带没有 bin：平铺最近的值，别掉到 -96
+                fresh[(size_t) i] = p > 0 ? pts[(size_t) (p - 1)].db : pts[(size_t) q].db;
+            if (!any)
+                p = q;
         }
-        // 快速起音，每帧约 2.5 dB 衰减。
+        // 跨带 1-2-1 平滑两遍（合成为 [1,4,6,4,1]/16 二项式核，接近
+        // FabFilter 的顺滑度）+ 快起慢落的时域包络（60 fps 下每帧
+        // 1.25 dB = 每秒 75 dB，与 30 fps 时代的观感一致）。
+        std::array<float, v4h::EqCurve::kSpectrumPoints> smooth{};
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            const auto& src = pass == 0 ? fresh : smooth;
+            std::array<float, v4h::EqCurve::kSpectrumPoints> dst{};
+            for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
+            {
+                const float lo = src[(size_t) juce::jmax(0, i - 1)];
+                const float hi = src[(size_t) juce::jmin(v4h::EqCurve::kSpectrumPoints - 1, i + 1)];
+                dst[(size_t) i] = 0.25f * lo + 0.5f * src[(size_t) i] + 0.25f * hi;
+            }
+            smooth = dst;
+        }
         for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
-            spectrumDb_[(size_t) i] = juce::jmax(fresh[(size_t) i], spectrumDb_[(size_t) i] - 2.5f);
+            spectrumDb_[(size_t) i] = juce::jmax(smooth[(size_t) i], spectrumDb_[(size_t) i] - 1.25f);
     }
 
     // 把实时数据推给可见的曲线图，并按当前帧率刷新它们。
@@ -950,38 +1042,40 @@ void ViPER4HostAudioProcessorEditor::resized()
         }
 
         const bool collapsed = pg->collapsed;
-        // 图形条（曲线 / 分频条 / 场视图）放在标题和参数行之间。
+        // 图形条（曲线 / 分频条 / 场视图）放在标题和参数行之间，
+        // 与标题栏隔一个 gap，图的上边不压标题。
         int graphicH = 0;
         if (pg->curve != nullptr)
         {
             graphicH = !collapsed ? curveHeight : 0;
             pg->curve->setVisible(graphicH != 0);
             if (graphicH != 0)
-                pg->curve->setBounds(8, titleHeight, columnWidth - 16, curveHeight);
+                pg->curve->setBounds(8, titleHeight + gap, columnWidth - 16, curveHeight);
         }
         else if (pg->strip != nullptr)
         {
             graphicH = !collapsed ? stripHeight : 0;
             pg->strip->setVisible(graphicH != 0);
             if (graphicH != 0)
-                pg->strip->setBounds(8, titleHeight, columnWidth - 16, stripHeight);
+                pg->strip->setBounds(8, titleHeight + gap, columnWidth - 16, stripHeight);
         }
         else if (pg->siView != nullptr)
         {
             graphicH = !collapsed ? siViewHeight : 0;
             pg->siView->setVisible(graphicH != 0);
             if (graphicH != 0)
-                pg->siView->setBounds(8, titleHeight, columnWidth - 16, siViewHeight);
+                pg->siView->setBounds(8, titleHeight + gap, columnWidth - 16, siViewHeight);
         }
         else if (pg->grMeter != nullptr)
         {
             graphicH = !collapsed ? grMeterHeight : 0;
             pg->grMeter->setVisible(graphicH != 0);
             if (graphicH != 0)
-                pg->grMeter->setBounds(8, titleHeight, columnWidth - 16, grMeterHeight);
+                pg->grMeter->setBounds(8, titleHeight + gap, columnWidth - 16, grMeterHeight);
         }
         const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
-        const int height = titleHeight + (collapsed ? 0 : graphicH + rowCount * rowHeight + fileRowHeight);
+        const int height = titleHeight
+            + (collapsed ? 0 : gap + graphicH + rowCount * rowHeight + fileRowHeight);
 
         pg->group.setBounds(gap, y, columnWidth, height);
         for (auto& row : pg->rows)
@@ -990,7 +1084,7 @@ void ViPER4HostAudioProcessorEditor::resized()
 
         if (!collapsed)
         {
-            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight + graphicH, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight + gap + graphicH, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
             for (auto& row : pg->rows)
             {
                 if (!row->label.isVisible())

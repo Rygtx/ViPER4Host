@@ -129,7 +129,7 @@ private:
     void selectLanguage();
     void pickFile(ParamGroup& group);
     void refreshFileStatus(ParamGroup& group);
-    // 30 Hz 电平刷新：轮询处理器电平、重算频谱 FFT，
+    // 60 Hz 电平刷新：轮询处理器电平、重算频谱 FFT，
     // 并重绘可见的曲线图 / GR 表。
     void pullMetersAndSpectrum();
     // 预设与 A/B 对比。
@@ -169,11 +169,20 @@ private:
     juce::TextButton abButtons_[2];
     juce::TextButton abCopy_;
     juce::Array<juce::File> userPresetFiles_;
-    // 频谱垫底用的 FFT 管线（单声道输出抽头 -> 对数频点）。
-    juce::dsp::FFT fft_{11}; // 2^11 = 2048
+    // 频谱垫底用的多分辨率 FFT 管线（单声道输出抽头 -> 对数频点）：
+    // 低频带用 8192 点长窗（5.9 Hz 分辨率，20 Hz 附近才能对齐调节点），
+    // 高频带用 2048 点短窗（瞬态不糊）。频带无 bin 覆盖时按 log 频率插值。
+    juce::dsp::FFT fft_{11};   // 2^11 = 2048，高频带
+    juce::dsp::FFT fftLong_{13}; // 2^13 = 8192，低频带
     // JUCE 的实数变换对 N 点输入写出 2N 个浮点数。
-    std::array<float, 4096> fftSamples_{};
+    std::array<float, 16384> fftSamples_{}; // 长窗时域输入，原地变到频域
+    std::array<float, 4096> fftShortBuf_{}; // 短窗时域输入
     std::array<float, 2048> hann_{};
+    std::array<float, 8192> hannLong_{};
+    // 频谱滑动窗：编辑器每帧把 FIFO 新到的样本追加到窗尾，窗口始终是
+    // 最新 8192 个样本，这样长窗 FFT 每帧都能跑（频谱才有 30 fps）。
+    std::array<float, 8192> window_{};
+    int windowFill_ = 0;
     std::array<float, v4h::EqCurve::kSpectrumPoints> spectrumDb_{};
     // 曲线图绘制时读取的电平快照。
     float mbcGrDb_[5]{};

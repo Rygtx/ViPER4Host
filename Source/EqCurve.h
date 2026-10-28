@@ -242,12 +242,17 @@ private:
     float yOf(double db) const
     {
         const auto p = plot();
-        return p.getCentreY() - (float) (db / maxDb) * (p.getHeight() * 0.5f);
+        // 上下各内缩 8px：±12 dB 的手柄圆（半径约 6px）完整落在图内，
+        // 极端增益时不会压到卡片标题或段数行；曲线求和超出范围时钳到边内。
+        const float half = p.getHeight() * 0.5f - 8.0f;
+        return juce::jlimit(p.getY() + 1.0f, p.getBottom() - 1.0f,
+            p.getCentreY() - (float) (db / maxDb) * half);
     }
     float dbOf(float y) const
     {
         const auto p = plot();
-        return (p.getCentreY() - y) / (p.getHeight() * 0.5f) * maxDb;
+        const float half = p.getHeight() * 0.5f - 8.0f;
+        return (p.getCentreY() - y) / half * maxDb;
     }
 
     // --- 鼠标 --------------------------------------------------------------
@@ -488,14 +493,18 @@ private:
             spec.startNewSubPath(p.getX(), ySpec(-96.0f));
             for (int i = 0; i < kSpectrumPoints; ++i)
             {
-                const float f = minFreq * std::pow(1000.0f, i / (float) (kSpectrumPoints - 1));
+                // 频带 i 的数据覆盖 [20*1000^(i/128), 20*1000^((i+1)/128)]，
+                // 画在频带中心，和 EQ 调节点共用同一条对数频率轴。
+                const float f = minFreq * std::pow(1000.0f, (i + 0.5f) / kSpectrumPoints);
                 spec.lineTo(xOf(f), ySpec(spectrumDb[i]));
             }
             spec.lineTo(p.getRight(), ySpec(-96.0f));
-            g.setColour(c(textBright).withAlpha(0.07f));
+            // FabFilter 风格：谱顶亮、向下淡出的渐变填充 + 清晰描边。
+            g.setGradientFill(juce::ColourGradient(c(textBright).withAlpha(0.30f),
+                0.0f, p.getY(), c(textBright).withAlpha(0.03f), 0.0f, p.getBottom(), false));
             g.fillPath(spec);
-            g.setColour(c(textBright).withAlpha(0.25f));
-            g.strokePath(spec, juce::PathStrokeType(1.0f));
+            g.setColour(c(textBright).withAlpha(0.45f));
+            g.strokePath(spec, juce::PathStrokeType(1.2f));
         }
 
         // 频响曲线 + 曲线下方的柔和填充
