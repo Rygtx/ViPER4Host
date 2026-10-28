@@ -13,7 +13,6 @@ namespace v4h
 namespace theme
 {
 constexpr uint32_t background = 0xff0e1013; // 窗口
-constexpr uint32_t backgroundHi = 0xff14171c; // 窗口渐变亮端
 constexpr uint32_t header = 0xff14171c; // 顶栏
 constexpr uint32_t panel = 0xff171a20; // 卡片正文
 constexpr uint32_t panelHeader = 0xff1e232b; // 卡片标题栏
@@ -23,7 +22,6 @@ constexpr uint32_t hairline = 0xff212630; // 分隔发丝线
 constexpr uint32_t field = 0xff0a0c0f; // 输入框、下拉框、曲线图
 constexpr uint32_t accent = 0xff2fd6bd; // 青色点缀
 constexpr uint32_t accentBright = 0xff8defe0;
-constexpr uint32_t accentDark = 0xff159c8a;
 constexpr uint32_t text = 0xffb6bdc8;
 constexpr uint32_t textBright = 0xffedf0f4;
 constexpr uint32_t textDim = 0xff7a8290;
@@ -141,7 +139,7 @@ public:
     // 拇指半径 6，与下面的绘制保持一致（拇指正好走到轨道两端）。
     int getSliderThumbRadius(juce::Slider&) override { return 6; }
 
-    // 细圆角轨道（4px）+ 渐变已填充段 + 白色圆钮。
+    // 细圆角轨道（4px）+ 青色已填充段 + 白色圆钮。
     void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float sliderPos,
         float /*min*/, float /*max*/, juce::Slider::SliderStyle, juce::Slider& slider) override
     {
@@ -163,8 +161,7 @@ public:
         auto filled = track.withRight(juce::jlimit(track.getX(), track.getRight(), pos));
         if (filled.getWidth() > 0.5f)
         {
-            juce::ColourGradient fill(c(accentDark), filled.getX(), cy, c(accent), filled.getRight(), cy, false);
-            g.setGradientFill(fill);
+            g.setColour(c(accent));
             g.fillRoundedRectangle(filled, radius);
         }
 
@@ -207,15 +204,9 @@ public:
 
         // 填充先内缩，让 1px 描边正好贴着填充轮廓。
         auto pill = bounds.reduced(0.75f);
-        if (on)
-        {
-            juce::ColourGradient grad(c(accentBright), 0.0f, pill.getY(), c(accentDark), 0.0f, pill.getBottom(), false);
-            g.setGradientFill(grad);
-        }
-        else
-            g.setColour(over ? c(outline).brighter(0.08f) : c(outline));
+        g.setColour(on ? c(accent) : (over ? c(outline).brighter(0.08f) : c(outline)));
         g.fillRoundedRectangle(pill, pill.getHeight() * 0.5f);
-        g.setColour(c(on ? accentBright : outline).withAlpha(0.6f));
+        g.setColour(c(on ? accent : outline).withAlpha(0.6f));
         g.drawRoundedRectangle(pill, pill.getHeight() * 0.5f, 1.0f);
 
         const float knob = 14.0f;
@@ -237,7 +228,6 @@ public:
         g.setColour(c(panel));
         g.fillRoundedRectangle(card, cs);
 
-        // 标题栏：圆角矩形向下多画 8px，再用正文色盖掉底部圆角。
         // 四角全圆仅限"只剩标题栏"的分组。折叠状态由编辑器通过组件属性
         // 传入（refreshCollapse 里维护），不靠卡片高度猜。
         const bool titleOnly = group.getProperties().getVarPointer("v4hCollapsed") != nullptr;
@@ -264,7 +254,6 @@ public:
 
         if (text.isNotEmpty())
         {
-            // 折叠成只剩标题栏的窄卡片不画点缀条，避免与开关挤在一起。
             g.setColour(c(accent));
             g.fillRoundedRectangle(12.0f, hdr.getCentreY() - 6.0f, 3.0f, 12.0f, 1.5f);
             g.setFont(withDefaultMetrics(juce::FontOptions(12.5f, juce::Font::bold)));
@@ -274,7 +263,7 @@ public:
         }
     }
 
-    // 普通按钮：静默 = 面板色 + 发丝描边；按下压暗；激活态 = 青色渐变胶囊。
+    // 普通按钮：静默 = 面板色 + 发丝描边；按下压暗；激活态 = 青色胶囊。
     void drawButtonBackground(juce::Graphics& g, juce::Button& button,
         const juce::Colour&, bool over, bool down) override
     {
@@ -282,9 +271,7 @@ public:
         auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
         if (button.getToggleState())
         {
-            juce::ColourGradient grad(c(accentBright), 0.0f, bounds.getY(),
-                c(accentDark), 0.0f, bounds.getBottom(), false);
-            g.setGradientFill(grad);
+            g.setColour(c(accent));
             g.fillRoundedRectangle(bounds, 5.0f);
             return;
         }

@@ -722,10 +722,6 @@ void ViPER4HostAudioProcessorEditor::updateBandVisibility()
         selectDeBand(deN - 1); // 详情行跟随变小的频段数
     if (selectedMbcBand_ >= mbcN)
         selectMbcBand(mbcN - 1);
-    // 超出当前段数的 MBC 频段分组整体隐藏。
-    for (auto& pg : groups_)
-        if (pg->groupId.startsWith("groupMbcB"))
-            pg->visible = pg->groupId.substring(9).getIntValue() <= mbcN;
     relabelEqBands(); // 段数变化后 EQ 滑杆标签跟随引擎频点
     resized();
 }
@@ -979,6 +975,8 @@ void ViPER4HostAudioProcessorEditor::resized()
             {
                 // 文件行是 pg->group 的子控件：坐标相对分组，
                 // 而参数行在 content_ 坐标系里。
+                // shortcut: 未叠加 graphicH 偏移——conv/ddc 目前没有图形条，
+                // 若将来给它们加曲线/量表，这里的 Y 要加上 graphicH。
                 auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
                     columnWidth - 16, rowHeight).reduced(4, 1);
                 pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
@@ -1001,20 +999,15 @@ void ViPER4HostAudioProcessorEditor::resized()
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)
 {
     using namespace v4h::theme;
-    // 全窗自上而下的微渐变，避免大面积纯色发闷。
-    juce::ColourGradient bg(c(backgroundHi), 0.0f, 0.0f,
-        c(background), 0.0f, static_cast<float>(getHeight()), false);
-    g.setGradientFill(bg);
+    g.setColour(c(background));
     g.fillAll();
 
     auto strip = getLocalBounds().removeFromTop(headerHeight).toFloat();
     g.setColour(c(header));
     g.fillRect(strip);
-    // 顶栏底部：一条深色发丝线，上面叠一条向右淡出的青色高光。
+    // 顶栏底部：深色发丝线叠一条青色高光。
     g.setColour(juce::Colours::black.withAlpha(0.4f));
     g.fillRect(0.0f, strip.getBottom() - 1.0f, static_cast<float>(getWidth()), 1.0f);
-    juce::ColourGradient line(c(accent).withAlpha(0.55f), 0.0f, strip.getBottom(),
-        c(accent).withAlpha(0.0f), static_cast<float>(getWidth()) * 0.55f, strip.getBottom(), false);
-    g.setGradientFill(line);
+    g.setColour(c(accent).withAlpha(0.55f));
     g.fillRect(0.0f, strip.getBottom() - 1.0f, static_cast<float>(getWidth()), 1.0f);
 }
