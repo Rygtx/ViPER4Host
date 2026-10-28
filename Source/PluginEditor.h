@@ -157,14 +157,15 @@ private:
     // ponytail: EQ APO 会在非消息线程删除编辑器；那一瞬间如果 ComboBox
     // 弹出菜单还开着，DropShadower 里会崩。已接受——与下面的 fileChooser_
     // 同一风险级别。真要出事就换成编辑器内下拉（纯子控件，不开弹窗）。
-    juce::ComboBox languageBox_;
+    // 同样用 WheelCombo:顶栏虽不滚动,但悬停滚轮误切预设/语言是同一个毛病。
+    v4h::WheelCombo languageBox_;
     juce::Viewport viewport_;
     juce::Component content_;
     std::unique_ptr<juce::FileChooser> fileChooser_;
 
     // 预设与 A/B 对比。A/B 槽位状态放在处理器里（随 DAW 工程一起保存）；
     // 编辑始终落在实时状态上（下次切换时也会进入当前活动槽位）。
-    juce::ComboBox presetBox_;
+    v4h::WheelCombo presetBox_;
     juce::TextButton abButtons_[2];
     juce::TextButton abCopy_;
     juce::Array<juce::File> userPresetFiles_;
