@@ -132,26 +132,24 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
 
     addGroup("groupAGC", { "pgcEnable", "pgcStrength", "pgcMaxGain", "pgcOutputThreshold" });
     {
-        auto& pg = *addGroup("groupMbc", { "mbcEnable", "mbcBandCount" });
+        // MBC 本体 + 选中频段的详情行（mbc1*）合并在一个分组里：分频条
+        // 下方依次是段数、频段启用等 17 行。选中频段时 selectMbcBand 把
+        // 这些行重新绑到 mbcN*。mbcEnable 是标题折叠开关。
+        static const char* bandIds[] = { "Enable", "Threshold", "Ratio", "Knee", "KneeAuto",
+            "Gain", "GainAuto", "Attack", "AttackAuto", "Release", "ReleaseAuto", "KneeMulti",
+            "MaxAttack", "MaxRelease", "Crest", "Adapt", "NoClip" };
+        std::vector<juce::String> ids = { "mbcEnable", "mbcBandCount" };
+        for (const char* s : bandIds)
+            ids.push_back(juce::String("mbc1") + s);
+        auto& pg = *addGroup("groupMbc", ids);
+        for (auto& row : pg.rows)
+            if (!row->isEnable && row->paramId != "mbcBandCount")
+                mbcBandRows_.push_back(row.get()); // 创建顺序 == 绑定顺序
         pg.strip = std::make_unique<v4h::XoverStrip>(processor_.getParametersState());
         pg.strip->setBandGrDb(mbcGrDb_);
         // 点击某个区间选中该频段；详情行跟着切换。
         pg.strip->onSelect = [this](int band) { selectMbcBand(band); };
         pg.group.addAndMakeVisible(*pg.strip);
-    }
-
-    {
-        // 选中 MBC 频段的详情面板（titleEnable=false，让 mbcNEnable 保持
-        // 普通开关行，而不是充当本分组的折叠开关）。
-        static const char* suffixes[] = { "Enable", "Threshold", "Ratio", "Knee", "KneeAuto",
-            "Gain", "GainAuto", "Attack", "AttackAuto", "Release", "ReleaseAuto", "KneeMulti",
-            "MaxAttack", "MaxRelease", "Crest", "Adapt", "NoClip" };
-        std::vector<juce::String> ids;
-        for (const char* s : suffixes)
-            ids.push_back(juce::String("mbc1") + s);
-        auto& pg = *addGroup("groupMbcSel", ids, false);
-        for (auto& row : pg.rows)
-            mbcBandRows_.push_back(row.get()); // 创建顺序 == 绑定顺序
     }
 
     addGroup("groupFet", { "fetEnable", "fetThreshold", "fetRatio", "fetKnee", "fetKneeAuto",
@@ -682,34 +680,34 @@ void ViPER4HostAudioProcessorEditor::renamePresetDialog(const juce::File& file)
 }
 
 ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addGroup(
-    const juce::String& groupId, std::vector<juce::String> paramIds, bool titleEnable)
+    const juce::String& groupId, std::vector<juce::String> paramIds)
 {
     auto pg = std::make_unique<ParamGroup>();
     pg->groupId = groupId;
 
     const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
+    // 分组的启用开关（如果有）兼任折叠控件，放进标题栏。参数表里排在
+    // 后面的其他 "*Enable"（如合并进 groupMbc 的频段行 mbc1Enable）
+    // 不算数，保持普通开关行。
+    juce::String enableId;
+    const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
+        [](const juce::String& id) { return id.endsWith("Enable"); });
+    if (enableIt != paramIds.end())
+    {
+        enableId = *enableIt;
+        pg->enableParamId = enableId;
+        pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
+            *processor_.getParametersState().getParameter(pg->enableParamId),
+            [this](float) { refreshCollapse(); },
+            nullptr);
+    }
     for (const auto& id : paramIds)
     {
         auto row = std::make_unique<ParamRow>();
-        // 分组的 "*Enable" 开关放在分组标题栏里……
-        bindRow(*row, id, lang, id.endsWith("Enable") && titleEnable
-            ? (juce::Component&) pg->group : content_, titleEnable);
+        // 只有分组的启用开关进标题栏，其余参数行进网格。
+        const bool isTitleToggle = id == enableId;
+        bindRow(*row, id, lang, isTitleToggle ? (juce::Component&) pg->group : content_, isTitleToggle);
         pg->rows.push_back(std::move(row));
-    }
-
-    // 分组的启用开关（如果有）兼任折叠控件。
-    if (titleEnable)
-    {
-        const auto enableIt = std::find_if(paramIds.begin(), paramIds.end(),
-            [](const juce::String& id) { return id.endsWith("Enable"); });
-        if (enableIt != paramIds.end())
-        {
-            pg->enableParamId = *enableIt;
-            pg->enableAttachment = std::make_unique<juce::ParameterAttachment>(
-                *processor_.getParametersState().getParameter(pg->enableParamId),
-                [this](float) { refreshCollapse(); },
-                nullptr);
-        }
     }
 
     if (groupId == "groupConv" || groupId == "groupDdc")
@@ -804,8 +802,8 @@ void ViPER4HostAudioProcessorEditor::selectMbcBand(int band)
         bindRow(*mbcBandRows_[i], pfx + suffixes[i], lang, content_, false);
 }
 
-// 折叠的分组只剩标题栏；标题栏里的启用开关是唯一控件。MBC 详情面板
-// 还要额外跟随 mbcEnable。
+// 折叠的分组只剩标题栏；标题栏里的启用开关是唯一控件。没有开关的
+// 分组折叠后由 resized() 整个隐藏。
 void ViPER4HostAudioProcessorEditor::refreshCollapse()
 {
     auto& apvts = processor_.getParametersState();
@@ -818,8 +816,6 @@ void ViPER4HostAudioProcessorEditor::refreshCollapse()
         bool expanded = true;
         if (pg->enableParamId.isNotEmpty())
             expanded = isOn(pg->enableParamId);
-        if (pg->groupId == "groupMbcSel")
-            expanded = expanded && isOn("mbcEnable");
         pg->collapsed = !expanded;
         // 标题栏样式同步到组件属性，Theme.h 据此决定圆角画法。
         // 折叠态、或正文为零的分组（如扬声器优化，展开也没有内容）
@@ -1079,8 +1075,12 @@ void ViPER4HostAudioProcessorEditor::resized()
     for (auto& pg : groups_)
     {
         const bool show = pg->page == currentPage_;
-        pg->group.setVisible(show);
-        if (!show)
+        // 折叠后标题栏里没有开关的分组（如 MBC 详情）整个隐藏：
+        // 光秃秃一根标题既不能操作也不该占高度。有开关的分组折叠后
+        // 标题栏本身就是开关，保留。
+        const bool dead = pg->collapsed && pg->enableParamId.isEmpty();
+        pg->group.setVisible(show && !dead);
+        if (!show || dead)
         {
             // 参数行是 content_ 的子控件，要显式隐藏。启用开关是分组的
             // 子控件——分组可见性已经覆盖它，这里再动它的话，回来时

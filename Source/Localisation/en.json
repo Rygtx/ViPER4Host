@@ -193,7 +193,6 @@
     "axMode2": "Heavy",
     "groupSpk": "Speaker Correction",
     "groupMbc": "Multiband Compressor",
-    "groupMbcSel": "Band Detail",
     "mbcBandCount": "Bands",
     "mbcCross1": "Crossover 1",
     "mbcCross2": "Crossover 2",

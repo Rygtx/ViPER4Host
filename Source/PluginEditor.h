@@ -109,10 +109,9 @@ private:
     // 页签青点：每页只要有分组的启用开关是开的就点亮。
     void refreshTabDots();
     // 创建分组及其参数行；返回指针以便调用者往上面挂额外的东西
-    // （曲线编辑器、文件行）。titleEnable=false 时 "*Enable" 参数仍作为
-    // 普通行（MBC 的选中频段面板标题栏没有开关）。
-    ParamGroup* addGroup(const juce::String& groupId, std::vector<juce::String> paramIds,
-        bool titleEnable = true);
+    // （曲线编辑器、文件行）。参数表里第一个 "*Enable" 是分组开关，
+    // 进标题栏兼任折叠控件；后续的 "*Enable" 保持普通行。
+    ParamGroup* addGroup(const juce::String& groupId, std::vector<juce::String> paramIds);
     // 把一行的控件和附着（重新）绑定到一个参数。addGroup 和
     // selectDeBand/selectMbcBand 都用它——后者把详情行重新指向
     // 条/曲线选中的频段。
