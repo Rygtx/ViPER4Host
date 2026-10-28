@@ -27,6 +27,7 @@ constexpr uint32_t textBright = 0xffedf0f4;
 constexpr uint32_t textDim = 0xff7a8290;
 constexpr uint32_t gr = 0xfff5a86a; // 增益衰减琥珀色（行业惯例）
 constexpr uint32_t danger = 0xffe0564a; // 告警（GR 超量程）
+constexpr int comboTextPad = 10; // 下拉框文字左内边距（px）
 
 inline juce::Colour c(uint32_t v) { return juce::Colour(v); }
 } // namespace theme
@@ -143,6 +144,26 @@ public:
     juce::Font getLabelFont(juce::Label&) override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
     juce::Font getTextButtonFont(juce::TextButton&, int) override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
     juce::Font getComboBoxFont(juce::ComboBox&) override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
+
+    // V4 默认把下拉框文字区从 x=1 开始，文字贴左边缘；统一加左内边距。
+    void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override
+    {
+        LookAndFeel_V4::positionComboBoxText(box, label);
+        label.setBounds(label.getX() + theme::comboTextPad, label.getY(),
+            label.getWidth() - theme::comboTextPad, label.getHeight());
+    }
+
+    // V2 默认占位文字用 label 的"自身坐标"画在下拉框原点，忽略 label 实际位置，
+    // 导致它与选中文字不同位；这里按 label 实际区域（含其边距）绘制，
+    // 占位与选中两条路径共用 positionComboBoxText 定下的同一套几何。
+    void drawComboBoxTextWhenNothingSelected(juce::Graphics& g, juce::ComboBox& box, juce::Label& label) override
+    {
+        g.setFont(getComboBoxFont(box));
+        g.setColour(box.findColour(juce::ComboBox::textColourId).withMultipliedAlpha(0.5f));
+        g.drawText(box.getTextWhenNothingSelected(),
+            label.getBorderSize().subtractedFrom(label.getBoundsInParent()),
+            label.getJustificationType());
+    }
     juce::Font getPopupMenuFont() override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
     juce::Font getAlertWindowMessageFont() override { return withDefaultMetrics(juce::FontOptions(13.5f)); }
 
