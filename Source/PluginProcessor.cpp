@@ -11,6 +11,45 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     , parameters_(*this, nullptr, "PARAMS", createParameterLayout())
 {
     formatManager_.registerBasicFormats();
+    // 频段族参数指针缓存（见头文件说明）；APVTS 已在初始化列表里建好。
+    for (int i = 0; i < 31; ++i)
+        eqBandPtrs_[i] = parameters_.getRawParameterValue("eqBand" + juce::String(i + 1));
+    for (int b = 0; b < 10; ++b)
+    {
+        const auto pfx = "de" + juce::String(b + 1);
+        auto& d = deBandPtrs_[b];
+        d.freq = parameters_.getRawParameterValue(pfx + "Freq");
+        d.q = parameters_.getRawParameterValue(pfx + "Q");
+        d.gain = parameters_.getRawParameterValue(pfx + "Gain");
+        d.threshold = parameters_.getRawParameterValue(pfx + "Threshold");
+        d.attack = parameters_.getRawParameterValue(pfx + "Attack");
+        d.release = parameters_.getRawParameterValue(pfx + "Release");
+        d.type = parameters_.getRawParameterValue(pfx + "Type");
+    }
+    for (int c = 0; c < 4; ++c)
+        mbcCrossPtrs_[c] = parameters_.getRawParameterValue("mbcCross" + juce::String(c + 1));
+    for (int b = 0; b < 5; ++b)
+    {
+        const auto pfx = "mbc" + juce::String(b + 1);
+        auto& m = mbcBandPtrs_[b];
+        m.enable = parameters_.getRawParameterValue(pfx + "Enable");
+        m.threshold = parameters_.getRawParameterValue(pfx + "Threshold");
+        m.ratio = parameters_.getRawParameterValue(pfx + "Ratio");
+        m.knee = parameters_.getRawParameterValue(pfx + "Knee");
+        m.kneeAuto = parameters_.getRawParameterValue(pfx + "KneeAuto");
+        m.gain = parameters_.getRawParameterValue(pfx + "Gain");
+        m.gainAuto = parameters_.getRawParameterValue(pfx + "GainAuto");
+        m.attack = parameters_.getRawParameterValue(pfx + "Attack");
+        m.attackAuto = parameters_.getRawParameterValue(pfx + "AttackAuto");
+        m.release = parameters_.getRawParameterValue(pfx + "Release");
+        m.releaseAuto = parameters_.getRawParameterValue(pfx + "ReleaseAuto");
+        m.kneeMulti = parameters_.getRawParameterValue(pfx + "KneeMulti");
+        m.maxAttack = parameters_.getRawParameterValue(pfx + "MaxAttack");
+        m.maxRelease = parameters_.getRawParameterValue(pfx + "MaxRelease");
+        m.crest = parameters_.getRawParameterValue(pfx + "Crest");
+        m.adapt = parameters_.getRawParameterValue(pfx + "Adapt");
+        m.noClip = parameters_.getRawParameterValue(pfx + "NoClip");
+    }
     parameters_.state.setProperty("uiLanguage", v4h::localisation::systemLanguage(), nullptr);
     // A/B 两个槽位初始都等于当前状态。
     abSlots[0] = abSlots[1] = parameters_.copyState();
@@ -446,6 +485,17 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
     // 电平统计 + 供编辑器用的单声道频谱抽头。尽力而为：UI 按定时器
     // 轮询这些值，读到过期或撕裂的一帧也无妨。
+    if (bypassed) // 旁路时编辑器上冻结的电平表会被误读成"还在工作"；
+                  // 引擎也没跑，getter 只有过期值，直接清零。
+    {
+        meters_.fetGrDb.store(0.0f);
+        meters_.limiterGrDb.store(0.0f);
+        for (auto& g : meters_.mbcGrDb)
+            g.store(0.0f);
+        for (auto& g : meters_.deGainDb)
+            g.store(0.0f);
+    }
+    else
     {
         constexpr float kRawToDb = 1.0f / 0.1151293f; // 引擎对数域 -> dB
         meters_.fetGrDb.store(-engine_.GetFetGainReduction() * kRawToDb);
@@ -458,27 +508,18 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         for (int b = 0; b < 10; ++b)
             meters_.deGainDb[static_cast<size_t>(b)].store(
                 engine_.GetDynamicEqBandAppliedGainDb(b));
+    }
 
-        int start1, size1, start2, size2;
-        spectrumFifo_.prepareToWrite(numFrames, start1, size1, start2, size2);
-        for (int i = 0; i < size1; ++i)
-            spectrumBuffer_[static_cast<size_t>(start1 + i)]
-                = (interleaved_[static_cast<size_t>(i) * 2]
-                      + interleaved_[static_cast<size_t>(i) * 2 + 1]) * 0.5f;
-        for (int i = 0; i < size2; ++i)
-            spectrumBuffer_[static_cast<size_t>(start2 + i)]
-                = (interleaved_[static_cast<size_t>(size1 + i) * 2]
-                      + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
-    }
-    if (bypassed) // 旁路时编辑器上冻结的电平表会被误读成"还在工作"
-    {
-        meters_.fetGrDb.store(0.0f);
-        meters_.limiterGrDb.store(0.0f);
-        for (auto& g : meters_.mbcGrDb)
-            g.store(0.0f);
-        for (auto& g : meters_.deGainDb)
-            g.store(0.0f);
-    }
+    int start1, size1, start2, size2;
+    spectrumFifo_.prepareToWrite(numFrames, start1, size1, start2, size2);
+    for (int i = 0; i < size1; ++i)
+        spectrumBuffer_[static_cast<size_t>(start1 + i)]
+            = (interleaved_[static_cast<size_t>(i) * 2]
+                  + interleaved_[static_cast<size_t>(i) * 2 + 1]) * 0.5f;
+    for (int i = 0; i < size2; ++i)
+        spectrumBuffer_[static_cast<size_t>(start2 + i)]
+            = (interleaved_[static_cast<size_t>(size1 + i) * 2]
+                  + interleaved_[static_cast<size_t>(size1 + i) * 2 + 1]) * 0.5f;
 
     float* outLeft = numChannels > 0 ? buffer.getWritePointer(0) : nullptr;
     float* outRight = numChannels > 1 ? buffer.getWritePointer(1) : nullptr;
@@ -491,11 +532,9 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
 
 void ViPER4HostAudioProcessor::buildEngineParams(viper::ViPERParams& p) const
 {
-    // getRawParameterValue 是 O(1) 查找；每块调用一次可以忽略。
+    // 字面量 id 的查找是 std::map 树遍历但不堆分配；频段族走缓存指针
+    // （见头文件说明），每块零分配。
     auto v = [this](const char* id) {
-        return parameters_.getRawParameterValue(id)->load(std::memory_order_relaxed);
-    };
-    auto vs = [this](const juce::String& id) {
         return parameters_.getRawParameterValue(id)->load(std::memory_order_relaxed);
     };
 
@@ -535,21 +574,22 @@ void ViPER4HostAudioProcessor::buildEngineParams(viper::ViPERParams& p) const
     constexpr int eqBandCounts[] = { 10, 15, 25, 31 };
     p.equalizer.band_count = static_cast<uint32_t>(eqBandCounts[static_cast<int>(v("eqBandCount"))]);
     for (int i = 0; i < 31; ++i)
-        p.equalizer.band_levels[static_cast<size_t>(i)] = vs("eqBand" + juce::String(i + 1));
+        p.equalizer.band_levels[static_cast<size_t>(i)]
+            = eqBandPtrs_[static_cast<size_t>(i)]->load(std::memory_order_relaxed);
 
     p.dynamic_eq.enable = v("deEnable") > 0.5f;
     p.dynamic_eq.band_count = static_cast<uint32_t>(v("deBandCount")) + 1;
     for (int b = 0; b < 10; ++b)
     {
-        const juce::String pfx = "de" + juce::String(b + 1);
+        const auto& d = deBandPtrs_[static_cast<size_t>(b)];
         auto& band = p.dynamic_eq.bands[static_cast<size_t>(b)];
-        band.frequency = vs(pfx + "Freq");
-        band.q = vs(pfx + "Q");
-        band.gain = vs(pfx + "Gain");
-        band.threshold = vs(pfx + "Threshold");
-        band.attack = vs(pfx + "Attack");
-        band.release = vs(pfx + "Release");
-        band.filter_type = static_cast<int>(vs(pfx + "Type"));
+        band.frequency = d.freq->load(std::memory_order_relaxed);
+        band.q = d.q->load(std::memory_order_relaxed);
+        band.gain = d.gain->load(std::memory_order_relaxed);
+        band.threshold = d.threshold->load(std::memory_order_relaxed);
+        band.attack = d.attack->load(std::memory_order_relaxed);
+        band.release = d.release->load(std::memory_order_relaxed);
+        band.filter_type = static_cast<int>(d.type->load(std::memory_order_relaxed));
     }
 
     p.psychoacoustic_bass.enable = v("pBassEnable") > 0.5f;
@@ -636,29 +676,29 @@ void ViPER4HostAudioProcessor::buildEngineParams(viper::ViPERParams& p) const
     p.multiband_compressor.enable = v("mbcEnable") > 0.5f;
     p.multiband_compressor.band_count = v("mbcBandCount") < 0.5f ? 3u : 5u;
     for (int c = 0; c < 4; ++c)
-        p.multiband_compressor.crossover_frequencies[static_cast<size_t>(c)] =
-            vs("mbcCross" + juce::String(c + 1));
+        p.multiband_compressor.crossover_frequencies[static_cast<size_t>(c)]
+            = mbcCrossPtrs_[static_cast<size_t>(c)]->load(std::memory_order_relaxed);
     for (int b = 0; b < 5; ++b)
     {
-        const juce::String pfx = "mbc" + juce::String(b + 1);
+        const auto& m = mbcBandPtrs_[static_cast<size_t>(b)];
         auto& band = p.multiband_compressor.bands[static_cast<size_t>(b)];
-        band.enable = vs(pfx + "Enable") > 0.5f;
-        band.threshold = dbToRaw(vs(pfx + "Threshold"));
-        band.ratio = ratioToRaw(vs(pfx + "Ratio"));
-        band.knee = dbToRaw(vs(pfx + "Knee"));
-        band.knee_auto = vs(pfx + "KneeAuto") > 0.5f;
-        band.gain = dbToRaw(vs(pfx + "Gain"));
-        band.gain_auto = vs(pfx + "GainAuto") > 0.5f;
-        band.attack = vs(pfx + "Attack") / 1000.0f;
-        band.attack_auto = vs(pfx + "AttackAuto") > 0.5f;
-        band.release = vs(pfx + "Release") / 1000.0f;
-        band.release_auto = vs(pfx + "ReleaseAuto") > 0.5f;
-        band.knee_multi = vs(pfx + "KneeMulti");
-        band.max_attack = vs(pfx + "MaxAttack") / 1000.0f;
-        band.max_release = vs(pfx + "MaxRelease") / 1000.0f;
-        band.crest = vs(pfx + "Crest") / 1000.0f;
-        band.adapt = vs(pfx + "Adapt");
-        band.no_clip = vs(pfx + "NoClip") > 0.5f;
+        band.enable = m.enable->load(std::memory_order_relaxed) > 0.5f;
+        band.threshold = dbToRaw(m.threshold->load(std::memory_order_relaxed));
+        band.ratio = ratioToRaw(m.ratio->load(std::memory_order_relaxed));
+        band.knee = dbToRaw(m.knee->load(std::memory_order_relaxed));
+        band.knee_auto = m.kneeAuto->load(std::memory_order_relaxed) > 0.5f;
+        band.gain = dbToRaw(m.gain->load(std::memory_order_relaxed));
+        band.gain_auto = m.gainAuto->load(std::memory_order_relaxed) > 0.5f;
+        band.attack = m.attack->load(std::memory_order_relaxed) / 1000.0f;
+        band.attack_auto = m.attackAuto->load(std::memory_order_relaxed) > 0.5f;
+        band.release = m.release->load(std::memory_order_relaxed) / 1000.0f;
+        band.release_auto = m.releaseAuto->load(std::memory_order_relaxed) > 0.5f;
+        band.knee_multi = m.kneeMulti->load(std::memory_order_relaxed);
+        band.max_attack = m.maxAttack->load(std::memory_order_relaxed) / 1000.0f;
+        band.max_release = m.maxRelease->load(std::memory_order_relaxed) / 1000.0f;
+        band.crest = m.crest->load(std::memory_order_relaxed) / 1000.0f;
+        band.adapt = m.adapt->load(std::memory_order_relaxed);
+        band.no_clip = m.noClip->load(std::memory_order_relaxed) > 0.5f;
     }
 }
 

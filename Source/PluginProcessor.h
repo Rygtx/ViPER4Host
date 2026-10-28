@@ -74,6 +74,19 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void buildEngineParams(viper::ViPERParams& params) const;
 
+    // 频段族参数的原始值指针，构造时抓一次。标量参数按字面量 id 查找
+    // 本来就不构造 juce::String；但每块动态拼 id（"eqBand" + N 等）会
+    // 在音频线程上堆分配约 190 次——实时线程的堆分配可能和宿主抢堆锁。
+    // 指针随处理器存活（replaceState 只换状态树，不重建参数适配器）。
+    struct DeBandPtrs { std::atomic<float> *freq, *q, *gain, *threshold, *attack, *release, *type; };
+    struct MbcBandPtrs { std::atomic<float> *enable, *threshold, *ratio, *knee, *kneeAuto,
+        *gain, *gainAuto, *attack, *attackAuto, *release, *releaseAuto, *kneeMulti,
+        *maxAttack, *maxRelease, *crest, *adapt, *noClip; };
+    std::atomic<float>* eqBandPtrs_[31]{};
+    DeBandPtrs deBandPtrs_[10]{};
+    MbcBandPtrs mbcBandPtrs_[5]{};
+    std::atomic<float>* mbcCrossPtrs_[4]{};
+
     struct PendingKernel
     {
         std::vector<float> samples;

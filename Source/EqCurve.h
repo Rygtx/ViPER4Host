@@ -12,6 +12,7 @@
 #include "Theme.h"
 
 #include <JuceHeader.h>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <vector>
@@ -127,25 +128,41 @@ public:
         return ra > rb ? ra : rb;
     }
 
-    double graphicResponseDb(const std::vector<Band>& bs, double f) const
+    // 每频段常数：系数只依赖频段参数和采样率，与 x 无关，逐像素循环外
+    // 算好（每帧一次，而不是每像素每频段一次 pow/三角函数）。
+    struct GraphicCoeffs { double c1, c2, c3, gain; };
+    struct SectionCoeffs { double b0, b1, b2, a0, a1, a2; };
+
+    std::array<GraphicCoeffs, 31> graphicCoeffs(const std::vector<Band>& bs) const
     {
         const double octaves = bandCount == 10 ? 1.0
             : bandCount == 15                  ? 2.0 / 3.0
                                                : 1.0 / 3.0;
+        std::array<GraphicCoeffs, 31> cs{};
+        for (int b = 0; b < bandCount; ++b)
+        {
+            const double r = bandPoleRadius(bs[(size_t) b].f, octaves, fsDraw);
+            const double w0 = 2.0 * juce::MathConstants<double>::pi * bs[(size_t) b].f / fsDraw;
+            cs[(size_t) b] = { 2.0 * r, 0.5 - r, 2.0 * (r + 0.5) * std::cos(w0),
+                std::pow(10.0, bs[(size_t) b].g / 20.0) };
+        }
+        return cs;
+    }
+
+    double graphicResponseDb(const GraphicCoeffs* cs, double f) const
+    {
         const double w = 2.0 * juce::MathConstants<double>::pi * f / fsDraw;
         const std::complex<double> zm1(std::cos(w), -std::sin(w));
         const std::complex<double> zm2 = zm1 * zm1;
         std::complex<double> sum{}, flat{};
         for (int b = 0; b < bandCount; ++b)
         {
-            const double r = bandPoleRadius(bs[(size_t) b].f, octaves, fsDraw);
-            const double c1 = 2.0 * r, c2 = 0.5 - r;
-            const double w0 = 2.0 * juce::MathConstants<double>::pi * bs[(size_t) b].f / fsDraw;
-            const double c3 = 2.0 * (r + 0.5) * std::cos(w0);
-            const std::complex<double> h = c2 * (1.0 - zm2) / (1.0 - c3 * zm1 + c1 * zm2);
-            sum += std::pow(10.0, bs[(size_t) b].g / 20.0) * 0.636 * h;
-            flat += 0.636 * h;
+            const auto& c = cs[(size_t) b];
+            const std::complex<double> h = c.c2 * (1.0 - zm2) / (1.0 - c.c3 * zm1 + c.c1 * zm2);
+            sum += c.gain * h;
+            flat += h;
         }
+        // 原实现的两侧 0.636 补偿常数在比值里抵消，直接省去。
         return 20.0 * std::log10(std::abs(sum) / std::max(std::abs(flat), 1e-9));
     }
 
@@ -533,8 +550,8 @@ private:
         }
     }
 
-    // 单个 RBJ 双二阶分节在频率 f 处的幅度（dB）。
-    double sectionDb(const Band& band, double f) const
+    // 单个 RBJ 双二阶分节的系数（只依赖频段参数和采样率）。
+    SectionCoeffs sectionCoeffs(const Band& band) const
     {
         const double A = std::pow(10.0, band.g / 40.0);
         const double q = band.q;
@@ -571,12 +588,18 @@ private:
                 a2 = (A + 1) - (A - 1) * cw - sa * al;
             }
         }
-        const double w = 2.0 * juce::MathConstants<double>::pi * f / fsDraw;
+        return { b0, b1, b2, a0, a1, a2 };
+    }
+
+    // 单个分节在频率 f 处的幅度（dB）。
+    static double sectionDb(const SectionCoeffs& c, double f, double fs)
+    {
+        const double w = 2.0 * juce::MathConstants<double>::pi * f / fs;
         const double c1 = std::cos(w), c2 = std::cos(2.0 * w);
-        const double num = b0 * b0 + b1 * b1 + b2 * b2
-            + 2.0 * (b0 * b1 + b1 * b2) * c1 + 2.0 * b0 * b2 * c2;
-        const double den = a0 * a0 + a1 * a1 + a2 * a2
-            + 2.0 * (a0 * a1 + a1 * a2) * c1 + 2.0 * a0 * a2 * c2;
+        const double num = c.b0 * c.b0 + c.b1 * c.b1 + c.b2 * c.b2
+            + 2.0 * (c.b0 * c.b1 + c.b1 * c.b2) * c1 + 2.0 * c.b0 * c.b2 * c2;
+        const double den = c.a0 * c.a0 + c.a1 * c.a1 + c.a2 * c.a2
+            + 2.0 * (c.a0 * c.a1 + c.a1 * c.a2) * c1 + 2.0 * c.a0 * c.a2 * c2;
         return 10.0 * std::log10(std::max(num, 1e-12) / std::max(den, 1e-12));
     }
 
@@ -584,34 +607,39 @@ private:
     {
         juce::Path path;
         const auto p = plot();
+        const int steps = juce::jmax(2, juce::roundToInt(p.getWidth()));
         if (mode == Mode::Dynamic)
         {
-            const int steps = juce::jmax(2, juce::roundToInt(p.getWidth()));
-            path.startNewSubPath(p.getX(), yOf(sumDb(bs, freqOf(p.getX()))));
+            // 容量取类不变量上限 31（bandCount 由 setBands 钳到 1..31），
+            // 动态模式实际只用 10，多出的空位不参与循环。
+            std::array<SectionCoeffs, 31> cs{};
+            for (int b = 0; b < bandCount; ++b)
+                cs[(size_t) b] = sectionCoeffs(bs[(size_t) b]);
+            path.startNewSubPath(p.getX(), yOf(sumDb(cs.data(), freqOf(p.getX()))));
             for (int s = 1; s <= steps; ++s)
             {
                 const float x = p.getX() + p.getWidth() * s / steps;
-                path.lineTo(x, yOf(sumDb(bs, freqOf(x))));
+                path.lineTo(x, yOf(sumDb(cs.data(), freqOf(x))));
             }
             return path;
         }
 
         // 图形模式：贴近引擎的带通响应求和。
-        const int steps = juce::jmax(2, juce::roundToInt(p.getWidth()));
-        path.startNewSubPath(p.getX(), yOf(graphicResponseDb(bs, freqOf(p.getX()))));
+        const auto coeffs = graphicCoeffs(bs);
+        path.startNewSubPath(p.getX(), yOf(graphicResponseDb(coeffs.data(), freqOf(p.getX()))));
         for (int s = 1; s <= steps; ++s)
         {
             const float x = p.getX() + p.getWidth() * s / steps;
-            path.lineTo(x, yOf(graphicResponseDb(bs, freqOf(x))));
+            path.lineTo(x, yOf(graphicResponseDb(coeffs.data(), freqOf(x))));
         }
         return path;
     }
 
-    double sumDb(const std::vector<Band>& bs, double f) const
+    double sumDb(const SectionCoeffs* cs, double f) const
     {
         double total = 0.0;
-        for (const auto& b : bs)
-            total += sectionDb(b, f);
+        for (int b = 0; b < bandCount; ++b)
+            total += sectionDb(cs[(size_t) b], f, fsDraw);
         return total;
     }
 

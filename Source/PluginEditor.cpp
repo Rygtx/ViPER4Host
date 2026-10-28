@@ -277,6 +277,10 @@ ViPER4HostAudioProcessorEditor::~ViPER4HostAudioProcessorEditor()
 
 void ViPER4HostAudioProcessorEditor::timerCallback()
 {
+    // 窗口没上屏（编辑器被宿主隐藏等）时不跑 FFT 和重绘，省后台 CPU。
+    if (!isShowing())
+        return;
+
     pullMetersAndSpectrum();
 
     // 窗口尺寸稳定约 1 秒后持久化。
