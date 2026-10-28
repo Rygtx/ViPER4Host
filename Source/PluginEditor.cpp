@@ -233,6 +233,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         addAndMakeVisible(pageButtons_[i]);
     }
     pageButtons_[0].setToggleState(true, juce::dontSendNotification);
+    refreshTabDots(); // 页签先于各开关初值出现，这里补一次点亮
 
     content_.setSize(defaultWidth, 0);
     viewport_.setViewedComponent(&content_, false);
@@ -691,7 +692,26 @@ void ViPER4HostAudioProcessorEditor::refreshCollapse()
         else
             pg->group.getProperties().remove("v4hTitleOnly");
     }
+    refreshTabDots();
     resized();
+}
+
+// 页签上的青点：该页至少一个分组的启用开关是开的（有东西在生效）。
+// 跟着 refreshCollapse 一起刷，覆盖开关切换、预设载入、A/B 切换。
+void ViPER4HostAudioProcessorEditor::refreshTabDots()
+{
+    auto& apvts = processor_.getParametersState();
+    bool pageActive[numPages] = {};
+    for (auto& pg : groups_)
+    {
+        if (pg->enableParamId.isEmpty())
+            continue;
+        auto* param = apvts.getParameter(pg->enableParamId);
+        if (param != nullptr && param->getValue() > 0.5f)
+            pageActive[pg->page] = true;
+    }
+    for (int i = 0; i < numPages; ++i)
+        pageButtons_[i].setActiveDot(pageActive[i]);
 }
 
 void ViPER4HostAudioProcessorEditor::updateBandVisibility()

@@ -44,10 +44,19 @@ inline juce::String freqText(float f)
     return juce::String(juce::roundToInt(f)) + " Hz";
 }
 
-// 页签按钮：无边框纯文字，激活态 = 亮色文字 + 底部青色短线。
+// 页签按钮：无边框纯文字，激活态 = 亮色文字 + 底部青色短线；
+// 该页有分组启用中时文字右侧加一个青点（由编辑器通过 setActiveDot 维护）。
 class TabButton final : public juce::TextButton
 {
 public:
+    void setActiveDot(bool on)
+    {
+        if (active == on)
+            return;
+        active = on;
+        repaint();
+    }
+
     void paintButton(juce::Graphics& g, bool over, bool /*down*/) override
     {
         using namespace theme;
@@ -63,7 +72,16 @@ public:
             g.setColour(c(accent));
             g.fillRoundedRectangle(b.getCentreX() - 14.0f, b.getBottom() - 4.0f, 28.0f, 2.5f, 1.25f);
         }
+        if (active)
+        {
+            const float tw = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), getButtonText());
+            g.setColour(c(accentBright));
+            g.fillEllipse(b.getCentreX() + tw * 0.5f + 5.5f, b.getCentreY() - 1.5f, 3.0f, 3.0f);
+        }
     }
+
+private:
+    bool active = false;
 };
 
 class ViperLookAndFeel final : public juce::LookAndFeel_V4
