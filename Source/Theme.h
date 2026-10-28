@@ -122,6 +122,48 @@ public:
     }
 };
 
+// 预设入口按钮：画成下拉框的样子（深色小字段 + 发丝描边 + 右侧箭头），
+// 点击弹出统一预设菜单。ComboBox 的弹层不支持子菜单，所以用按钮 + PopupMenu。
+class PresetButton final : public juce::Button
+{
+public:
+    PresetButton() : juce::Button({}) {}
+
+    // 未载入任何预设时文字用暗色（占位语义）。
+    void setPlaceholder(bool on)
+    {
+        if (placeholder == on)
+            return;
+        placeholder = on;
+        repaint();
+    }
+
+    void paintButton(juce::Graphics& g, bool /*over*/, bool /*down*/) override
+    {
+        using namespace theme;
+        auto b = getLocalBounds().toFloat().reduced(0.5f);
+        g.setColour(c(field));
+        g.fillRoundedRectangle(b, 5.0f);
+        g.setColour(isMouseOver(true) ? c(outline).brighter(0.25f) : c(hairline));
+        g.drawRoundedRectangle(b, 5.0f, 1.0f);
+        g.setFont(getLookAndFeel().withDefaultMetrics(juce::FontOptions(13.0f)));
+        g.setColour(placeholder ? c(textDim) : c(textBright));
+        auto textArea = b.reduced(comboTextPad, 0.0f);
+        // 右侧留出箭头位置，文字左对齐（与原下拉框同位）。
+        textArea.removeFromRight(16.0f);
+        g.drawText(getButtonText(), textArea, juce::Justification::centredLeft);
+        juce::Path arrow;
+        const float cx = b.getRight() - comboTextPad - 5.0f;
+        const float cy = b.getCentreY();
+        arrow.addTriangle(cx - 5.0f, cy - 2.5f, cx + 5.0f, cy - 2.5f, cx, cy + 2.5f);
+        g.setColour(c(textDim));
+        g.fillPath(arrow);
+    }
+
+private:
+    bool placeholder = true;
+};
+
 class ViperLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -151,7 +193,10 @@ public:
         setColour(juce::ComboBox::arrowColourId, c(textDim));
         setColour(juce::ComboBox::focusedOutlineColourId, c(accent).withAlpha(0.7f));
 
-        setColour(juce::PopupMenu::backgroundColourId, c(panel));
+        // 0.99 而非 1.0：弹层窗口按"背景色是否不透明"决定是否逐像素透明
+        // （juce_PopupMenu.cpp 的 setOpaque），完全-opaque 的颜色会让圆角
+        // 外露出窗口白底；0.99 视觉无差但启用透明。
+        setColour(juce::PopupMenu::backgroundColourId, c(panel).withAlpha(0.99f));
         setColour(juce::PopupMenu::textColourId, c(text));
         setColour(juce::PopupMenu::headerTextColourId, c(textBright));
         setColour(juce::PopupMenu::highlightedBackgroundColourId, c(accent).withAlpha(0.28f));
@@ -203,6 +248,89 @@ public:
     }
     juce::Font getPopupMenuFont() override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
     juce::Font getAlertWindowMessageFont() override { return withDefaultMetrics(juce::FontOptions(13.5f)); }
+
+    // --- 弹层重绘：跟上卡片设计语言（V4 继承的默认样式是直角平铺）---------
+    // 圆角面板 + 发丝描边；条目高亮内缩圆角、点缀色；勾选用点缀色。
+    // 对全部 PopupMenu 生效（预设菜单、语言/选项下拉等）。
+
+    void drawPopupMenuBackgroundWithOptions(juce::Graphics& g, int width, int height,
+        const juce::PopupMenu::Options&) override
+    {
+        using namespace theme;
+        auto b = juce::Rectangle<float>(0.0f, 0.0f, (float) width, (float) height).reduced(0.5f);
+        g.setColour(c(panel));
+        g.fillRoundedRectangle(b, 8.0f);
+        g.setColour(c(outline));
+        g.drawRoundedRectangle(b, 8.0f, 1.0f);
+    }
+
+    int getPopupMenuBorderSizeWithOptions(const juce::PopupMenu::Options&) override { return 8; }
+
+    // 弹层不要阴影：DropShadower 按方形窗口轮廓画灰晕，圆角 + 逐像素透明后
+    // 灰晕会从圆角外露出来形成可见边界；无边框平面风（发丝描边定边界）更干净。
+    int getMenuWindowFlags() override { return 0; }
+
+    void drawPopupMenuItemWithOptions(juce::Graphics& g, const juce::Rectangle<int>& area,
+        bool isHighlighted, const juce::PopupMenu::Item& item,
+        const juce::PopupMenu::Options&) override
+    {
+        using namespace theme;
+        const bool highlighted = isHighlighted && item.isEnabled;
+        const bool hasSubMenu = item.subMenu != nullptr
+            && (item.itemID == 0 || item.subMenu->getNumItems() > 0);
+
+        if (item.isSeparator)
+        {
+            g.setColour(c(hairline));
+            g.drawHorizontalLine(area.getCentreY(),
+                (float) area.getX() + 10.0f, (float) area.getRight() - 10.0f);
+            return;
+        }
+
+        auto r = area.reduced(3);
+        if (highlighted)
+        {
+            g.setColour(c(accent).withAlpha(0.25f));
+            g.fillRoundedRectangle(r.toFloat(), 4.0f);
+        }
+        if (! item.isEnabled)
+            g.setOpacity(0.35f);
+
+        g.setFont(getPopupMenuFont());
+
+        auto iconArea = r.removeFromLeft((r.getHeight() * 5) / 4).reduced(3).toFloat();
+        if (item.image != nullptr)
+            item.image->drawWithin(g, iconArea,
+                juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize, 1.0f);
+        else if (item.isTicked)
+        {
+            auto tick = getTickShape(1.0f);
+            g.setColour(c(accent));
+            g.fillPath(tick, tick.getTransformToScaleToFit(iconArea, true));
+        }
+
+        if (hasSubMenu)
+        {
+            const auto arrowH = 0.6f * getPopupMenuFont().getAscent();
+            const auto x = (float) r.removeFromRight((int) arrowH).getX();
+            const auto halfH = (float) r.getCentreY();
+            juce::Path p;
+            p.addTriangle(x, halfH - arrowH * 0.5f,
+                          x, halfH + arrowH * 0.5f,
+                          x + arrowH * 0.6f, halfH);
+            g.setColour(c(textDim));
+            g.fillPath(p);
+        }
+
+        // 勾选/箭头各自改过画笔颜色，画文字前必须显式恢复文字色，
+        // 否则被勾选的行整行变成点缀色。
+        r.removeFromRight(3);
+        g.setColour(highlighted ? c(textBright) : c(text));
+        g.drawFittedText(item.text, r, juce::Justification::centredLeft, 1);
+
+        if (item.shortcutKeyDescription.isNotEmpty())
+            g.drawText(item.shortcutKeyDescription, r, juce::Justification::centredRight, true);
+    }
 
     // 滑块数值编辑框（JUCE 里它是个 Label）：13px，画成圆角小字段。
     juce::Label* createSliderTextBox(juce::Slider&) override

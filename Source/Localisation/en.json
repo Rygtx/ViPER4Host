@@ -5,6 +5,7 @@
     "pluginTitle": "ViPER4Host",
     "uiLanguage": "UI Language",
     "presetLabel": "Preset",
+    "presetLoad": "Load Preset",
     "presetSave": "Save Preset…",
     "presetDelete": "Delete Preset",
     "presetDeleteConfirm": "Delete this preset?",

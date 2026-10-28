@@ -139,11 +139,13 @@ private:
     juce::File presetsDir() const;
     void refreshPresetList();
     void savePresetDialog();
-    // 右键预设栏：列出全部预设（重命名/删除，不必先载入）/ 打开文件夹。
-    void mouseDown(const juce::MouseEvent&) override;
-    void showPresetMenu();
-    void renamePresetDialog(int fileIndex);
-    void deletePresetWithConfirm(int fileIndex);
+    // 左键统一入口：每个预设一个子菜单（载入/重命名/删除）+ 另存 + 打开文件夹。
+    void openPresetMenu();
+    void updatePresetButtonText();
+    // 均按文件而非索引操作：菜单点击与文件系统变化之间没有时序耦合。
+    void loadPreset(const juce::File& file);
+    void renamePresetDialog(const juce::File& file);
+    void deletePresetWithConfirm(const juce::File& file);
 
     ViPER4HostAudioProcessor& processor_;
     v4h::ViperLookAndFeel lookAndFeel_;
@@ -168,7 +170,11 @@ private:
 
     // 预设与 A/B 对比。A/B 槽位状态放在处理器里（随 DAW 工程一起保存）；
     // 编辑始终落在实时状态上（下次切换时也会进入当前活动槽位）。
-    v4h::WheelCombo presetBox_;
+    // 预设入口是一个下拉框样式的按钮 + 统一弹层菜单（ComboBox 的弹层
+    // 不支持子菜单，且对"重复选中同一项"不触发回调）。
+    v4h::PresetButton presetButton_;
+    // 当前载入的预设文件（无效 = 未载入）；是菜单打勾/保存预填的依据。
+    juce::File currentPresetFile_;
     juce::TextButton abButtons_[2];
     juce::TextButton abCopy_;
     juce::Array<juce::File> userPresetFiles_;

@@ -5,6 +5,7 @@
     "pluginTitle": "ViPER4Host",
     "uiLanguage": "Язык интерфейса",
     "presetLabel": "Пресет",
+    "presetLoad": "Загрузить пресет",
     "presetSave": "Сохранить пресет…",
     "presetDelete": "Удалить пресет",
     "presetDeleteConfirm": "Удалить этот пресет?",
