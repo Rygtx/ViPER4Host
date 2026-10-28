@@ -7,7 +7,7 @@ namespace v4h::localisation
 {
 namespace
 {
-const char* kLanguages[] = { "en", "zh-Hans", "zh-Hant" };
+const char* kLanguages[] = { "en", "zh-Hans", "zh-Hant", "ja", "ko", "ru", "es", "de" };
 
 juce::var loadLanguage(const juce::String& code)
 {
@@ -82,6 +82,9 @@ juce::String systemLanguage()
             return "zh-Hant";
         return "zh-Hans";
     }
+    for (const auto* supported : kLanguages)
+        if (language.equalsIgnoreCase(supported))
+            return supported;
     return "en";
 }
 
