@@ -217,7 +217,10 @@ public:
     {
         using namespace theme;
         auto bounds = box.getLocalBounds().toFloat().reduced(0.5f);
-        const bool highlight = box.isMouseOver() || box.hasKeyboardFocus(true) || isButtonDown;
+        // isMouseOver 必须含子控件:文字 Label 盖满整框,不含的话鼠标扫过
+        // 会在 label 与框体间来回亮暗。键盘焦点不算高亮——点击后焦点会一直
+        // 留在框上,算进去描边就常亮不灭。
+        const bool highlight = box.isMouseOver(true) || isButtonDown;
 
         g.setColour(c(field));
         g.fillRoundedRectangle(bounds, 5.0f);
