@@ -269,7 +269,8 @@ ViPER4HostAudioProcessor::createParameterLayout()
     // 动态均衡器
     addBool("deEnable", "DynEQ Enable");
     addChoice("deBandCount", "DynEQ Bands", { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 2);
-    constexpr float deDefaultFreqs[] = { 60, 150, 400, 60, 60, 60, 60, 60, 60, 60 };
+    // 前三段是手调默认值，其余按约 2.5 倍对数间隔铺开，避免新增频段的点堆在同一频率。
+    constexpr float deDefaultFreqs[] = { 60, 150, 400, 1000, 2500, 5000, 8000, 11000, 14000, 17000 };
     for (int b = 1; b <= 10; ++b)
     {
         const auto pfx = "de" + juce::String(b);
