@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-package:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Show toolchain versions
+        shell: pwsh
+        run: |
+          cmake --version
+
+      - name: Derive build metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $cmakeText = Get-Content "CMakeLists.txt" -Raw
+          $pluginVersionMatch = [regex]::Match($cmakeText, 'set\(VIPER4HOST_PLUGIN_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+)"\)')
+          if (-not $pluginVersionMatch.Success) {
+            throw "Failed to read VIPER4HOST_PLUGIN_VERSION from CMakeLists.txt"
+          }
+          $pluginVersion = $pluginVersionMatch.Groups[1].Value
+          $releaseTag = "v$pluginVersion"
+          $releaseName = "ViPER4Host v$pluginVersion"
+          $packageName = "ViPER4Host-v$pluginVersion-windows"
+
+          "PACKAGE_NAME=$packageName" >> $env:GITHUB_ENV
+          "BUILD_DIR=build" >> $env:GITHUB_ENV
+          "plugin_version=$pluginVersion" >> $env:GITHUB_OUTPUT
+          "package_name=$packageName" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B $env:BUILD_DIR -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build $env:BUILD_DIR --config Release --parallel
+
+      - name: Package release files
+        shell: pwsh
+        run: |
+          $distDir = Join-Path $PWD "dist"
+          $stageDir = Join-Path $distDir $env:PACKAGE_NAME
+          $zipPath = Join-Path $distDir ($env:PACKAGE_NAME + ".zip")
+          $hashPath = Join-Path $distDir ($env:PACKAGE_NAME + ".sha256")
+
+          Remove-Item $stageDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+          Remove-Item $hashPath -Force -ErrorAction SilentlyContinue
+
+          New-Item -ItemType Directory -Path (Join-Path $stageDir "VST") -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $stageDir "VST3") -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $stageDir "Standalone") -Force | Out-Null
+
+          Copy-Item "$env:BUILD_DIR/ViPER4Host_artefacts/Release/VST/ViPER4Host.dll" `
+            (Join-Path $stageDir "VST/ViPER4Host.dll")
+          Copy-Item "$env:BUILD_DIR/ViPER4Host_artefacts/Release/VST3/ViPER4Host.vst3" `
+            (Join-Path $stageDir "VST3") -Recurse
+          Copy-Item "$env:BUILD_DIR/ViPER4Host_artefacts/Release/Standalone/ViPER4Host.exe" `
+            (Join-Path $stageDir "Standalone/ViPER4Host.exe")
+
+          Compress-Archive -Path $stageDir -DestinationPath $zipPath
+
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path $hashPath -Value "$hash *$($env:PACKAGE_NAME).zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.package_name }}
+          path: dist/${{ steps.meta.outputs.package_name }}.zip
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseTag = "${{ steps.meta.outputs.release_tag }}"
+          $releaseName = "${{ steps.meta.outputs.release_name }}"
+          $packageName = "${{ steps.meta.outputs.package_name }}"
+          $pluginVersion = "${{ steps.meta.outputs.plugin_version }}"
+          $zipPath = (Resolve-Path "dist/$packageName.zip").Path
+          $hashPath = (Resolve-Path "dist/$packageName.sha256").Path
+          $notesPath = Join-Path $PWD "dist/release-notes.txt"
+
+          @"
+          正式发行版
+
+          - 分支：${{ github.ref_name }}
+          - 提交：${{ github.sha }}
+          - 版本：$pluginVersion
+          - 工作流：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          "@ | Set-Content -Path $notesPath -Encoding utf8
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $remoteTagLine = git ls-remote --refs origin "refs/tags/$releaseTag"
+
+          if ([string]::IsNullOrWhiteSpace($remoteTagLine)) {
+            git rev-parse -q --verify "refs/tags/$releaseTag" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              git tag -d $releaseTag | Out-Null
+            }
+
+            git tag $releaseTag $env:GITHUB_SHA
+            git push origin "refs/tags/$releaseTag"
+          }
+          else {
+            $remoteTagCommit = ($remoteTagLine -split '\s+')[0]
+
+            if ($remoteTagCommit -ne $env:GITHUB_SHA) {
+              throw "Release tag $releaseTag already exists on $remoteTagCommit, refusing to move it to $env:GITHUB_SHA."
+            }
+          }
+
+          gh release view $releaseTag --repo $env:GITHUB_REPOSITORY *> $null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+
+          if ($releaseExists) {
+            $releaseJson = gh release view $releaseTag --repo $env:GITHUB_REPOSITORY --json assets
+            $releaseInfo = $releaseJson | ConvertFrom-Json
+
+            if ($null -ne $releaseInfo.assets) {
+              foreach ($asset in $releaseInfo.assets) {
+                gh release delete-asset $releaseTag $asset.name --repo $env:GITHUB_REPOSITORY --yes
+              }
+            }
+
+            gh release edit $releaseTag `
+              --repo $env:GITHUB_REPOSITORY `
+              --title $releaseName `
+              --notes-file $notesPath `
+              --prerelease=false
+          }
+          else {
+            gh release create $releaseTag `
+              --repo $env:GITHUB_REPOSITORY `
+              --title $releaseName `
+              --notes-file $notesPath
+          }
+
+          gh release upload $releaseTag $zipPath $hashPath `
+            --repo $env:GITHUB_REPOSITORY
