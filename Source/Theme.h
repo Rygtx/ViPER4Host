@@ -227,7 +227,7 @@ public:
     // 卡片式分组：标题栏（左缀青色小竖条 + 名称）+ 发丝分隔线 + 正文。
     // 标题栏高度 30 必须与 PluginEditor.cpp 的 titleHeight 一致。
     void drawGroupComponentOutline(juce::Graphics& g, int width, int height,
-        const juce::String& text, const juce::Justification&, juce::GroupComponent&) override
+        const juce::String& text, const juce::Justification&, juce::GroupComponent& group) override
     {
         using namespace theme;
         constexpr float cs = 8.0f;
@@ -238,16 +238,29 @@ public:
         g.fillRoundedRectangle(card, cs);
 
         // 标题栏：圆角矩形向下多画 8px，再用正文色盖掉底部圆角。
+        // 四角全圆仅限"只剩标题栏"的分组。折叠状态由编辑器通过组件属性
+        // 传入（refreshCollapse 里维护），不靠卡片高度猜。
+        const bool titleOnly = group.getProperties().getVarPointer("v4hCollapsed") != nullptr;
         auto hdr = card.removeFromTop(juce::jmin(headerH, card.getHeight()));
         g.setColour(c(panelHeader));
-        g.fillRoundedRectangle(hdr.withHeight(hdr.getHeight() + cs), cs);
-        g.setColour(c(panel));
-        g.fillRect(juce::Rectangle<float>(hdr.getX(), hdr.getBottom(), hdr.getWidth(), cs));
-        g.setColour(c(hairline));
-        g.fillRect(juce::Rectangle<float>(hdr.getX(), hdr.getBottom() - 0.5f, hdr.getWidth(), 1.0f));
+        if (titleOnly)
+        {
+            g.fillRoundedRectangle(hdr, cs);
+        }
+        else
+        {
+            // 标题栏：圆角矩形向下多画 8px，再用正文色盖掉底部圆角。
+            g.fillRoundedRectangle(hdr.withHeight(hdr.getHeight() + cs), cs);
+            g.setColour(c(panel));
+            g.fillRect(juce::Rectangle<float>(hdr.getX(), hdr.getBottom(), hdr.getWidth(), cs));
+            g.setColour(c(hairline));
+            g.fillRect(juce::Rectangle<float>(hdr.getX(), hdr.getBottom() - 0.5f, hdr.getWidth(), 1.0f));
+        }
 
+        // card 已被 removeFromTop 改成正文区域；外框必须按整卡描，
+        // 否则正文顶部会出现与标题栏接不上的两个圆角。
         g.setColour(c(outline));
-        g.drawRoundedRectangle(card, cs, 1.0f);
+        g.drawRoundedRectangle(juce::Rectangle<float>(0.5f, 0.5f, width - 1.0f, height - 1.0f), cs, 1.0f);
 
         if (text.isNotEmpty())
         {

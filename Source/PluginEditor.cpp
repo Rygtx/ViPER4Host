@@ -587,7 +587,8 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     groups_.push_back(std::move(pg));
     // 先入列再读初值：refreshCollapse 遍历 groups_，入列前调用会漏掉
     // 本分组自己，导致最后一个带开关的分组启动时折叠状态错误。
-    groups_.back()->enableAttachment->sendInitialUpdate();
+    if (groups_.back()->enableAttachment != nullptr)
+        groups_.back()->enableAttachment->sendInitialUpdate();
     return groups_.back().get();
 }
 
@@ -674,6 +675,11 @@ void ViPER4HostAudioProcessorEditor::refreshCollapse()
         if (pg->groupId == "groupMbcSel")
             expanded = expanded && isOn("mbcEnable");
         pg->collapsed = !expanded;
+        // 折叠状态同步到组件属性，Theme.h 据此决定标题栏圆角画法。
+        if (pg->collapsed)
+            pg->group.getProperties().set("v4hCollapsed", 1);
+        else
+            pg->group.getProperties().remove("v4hCollapsed");
     }
     resized();
 }
