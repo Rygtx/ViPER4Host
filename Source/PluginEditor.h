@@ -75,6 +75,9 @@ private:
     {
         juce::String groupId;
         juce::GroupComponent group;
+        // 参数名列宽：relabelAll 按本分组内最长标签实测（13px 字号），
+        // 固定宽度会在短标签语言（中文）下留出大片空白。
+        int labelWidth = 140;
         std::vector<std::unique_ptr<ParamRow>> rows;
         // 文件加载行（卷积器 / DDC 分组才有）。
         juce::Label fileLabel;

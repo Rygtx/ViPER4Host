@@ -7,7 +7,8 @@
 // 分节算法（MinPhaseIIRCoeffs），并做了归一化，让平直设置真的画在 0 dB。
 // 编辑器通过裸指针喂入实时数据：输出频谱（画在曲线下方）和各频段当前
 // 生效的增益（动态模式的"幽灵点"，展示动态在起作用）。方向键微调选中
-// 频段（Shift = 粗调）；动态模式下 Alt+拖动 / Ctrl+滚轮调 Q。
+// 频段（Shift = 粗调）；动态模式下 Alt+拖动 / Ctrl+滚轮调 Q。普通滚轮
+// 冒泡给视口滚动，按住 Ctrl/Alt 才调参（图形模式调增益）。
 
 #include "Theme.h"
 
@@ -361,12 +362,17 @@ private:
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
     {
         const int b = dragBand >= 0 ? dragBand : pick(e.position);
-        if (b < 0 || wheel.deltaY == 0)
+        // 图形模式的命中是整条 x 列,几乎盖满整个图,普通滚轮必须放行给
+        // Viewport 滚动,按住 Ctrl/Alt 才调增益;动态模式手柄是小圆点,
+        // 不在节点上时同样放行。
+        if (b < 0 || wheel.deltaY == 0
+            || (mode == Mode::Graphic && !e.mods.isCtrlDown() && !e.mods.isAltDown()))
         {
-            Component::mouseWheelMove(e, wheel); // 不在频段上:冒泡给 Viewport 滚动
+            Component::mouseWheelMove(e, wheel); // 冒泡给 Viewport 滚动
             return;
         }
-        // Ctrl/Alt + 滚轮调 Q；普通滚轮调增益。
+        // Ctrl/Alt + 滚轮:动态模式调 Q,图形模式调增益;
+        // 动态模式普通滚轮调增益。
         if (mode == Mode::Dynamic && (e.mods.isCtrlDown() || e.mods.isAltDown()))
         {
             const auto qid = bandId(b, "Q");

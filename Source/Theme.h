@@ -85,6 +85,43 @@ private:
     bool active = false;
 };
 
+// 滑块数值框：和下拉框同一套圆角小字段（深底 + 发丝描边），悬停描边
+// 提亮、进入编辑描边走点缀色；内嵌编辑 TextEditor 透明化，边框由字段
+// 自己画，编辑态才不会出现尖角叠影。
+class ValueField final : public juce::Label
+{
+public:
+    ValueField()
+    {
+        // 库里默认工厂(SliderLabelComp)定的对齐/键盘类型,替换后要保持一致。
+        setJustificationType(juce::Justification::centred);
+        setKeyboardType(juce::TextInputTarget::decimalKeyboard);
+        setBorderSize(juce::BorderSize<int>(0, 8, 0, 8));
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        using namespace theme;
+        auto b = getLocalBounds().toFloat().reduced(0.5f);
+        g.setColour(c(field));
+        g.fillRoundedRectangle(b, 5.0f);
+        g.setColour(isBeingEdited() ? c(accent).withAlpha(0.6f)
+            : isMouseOver(true)     ? c(outline).brighter(0.25f)
+                                    : c(hairline));
+        g.drawRoundedRectangle(b, 5.0f, 1.0f);
+        juce::Label::paint(g); // 文字仍走 LookAndFeel（背景描边都是透明）
+    }
+
+    juce::TextEditor* createEditorComponent() override
+    {
+        auto* ed = juce::Label::createEditorComponent();
+        ed->setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+        ed->setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+        ed->setColour(juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
+        return ed;
+    }
+};
+
 class ViperLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -94,8 +131,8 @@ public:
         using juce::LookAndFeel_V4;
 
         setColour(juce::ResizableWindow::backgroundColourId, c(background));
-        // 纯文本标签（背景透明）；滑块数值框走"数值即文字"：无框透明底 +
-        // 亮色文字（颜色 id 在下面 Slider::textBox* 里设）。
+        // 纯文本标签（背景透明）；滑块数值框画成圆角小字段（见下面
+        // ValueField / createSliderTextBox），颜色 id 在 Slider::textBox* 里设。
         setColour(juce::Label::textColourId, c(text));
         setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -167,10 +204,10 @@ public:
     juce::Font getPopupMenuFont() override { return withDefaultMetrics(juce::FontOptions(13.0f)); }
     juce::Font getAlertWindowMessageFont() override { return withDefaultMetrics(juce::FontOptions(13.5f)); }
 
-    // 滑块数值编辑框（JUCE 里它是个 Label）：13px。
-    juce::Label* createSliderTextBox(juce::Slider& slider) override
+    // 滑块数值编辑框（JUCE 里它是个 Label）：13px，画成圆角小字段。
+    juce::Label* createSliderTextBox(juce::Slider&) override
     {
-        auto* t = LookAndFeel_V4::createSliderTextBox(slider);
+        auto* t = new ValueField();
         t->setFont(withDefaultMetrics(juce::FontOptions(13.0f)));
         return t;
     }

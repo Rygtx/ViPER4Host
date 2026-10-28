@@ -10,7 +10,6 @@ constexpr int tabBarHeight = 36;
 constexpr int gap = 10;
 constexpr int rowHeight = 30;
 constexpr int titleHeight = 30; // 与 Theme.h 卡片标题栏高度一致
-constexpr int labelWidth = 140;
 constexpr int curveHeight = 230; // EQ / DynEQ 频响图
 constexpr int stripHeight = 60;  // MBC 分频条
 constexpr int siViewHeight = 200; // 立体声声像器场视图
@@ -76,6 +75,14 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     : AudioProcessorEditor(&processor), processor_(processor)
 {
     setLookAndFeel(&lookAndFeel_);
+
+    // 内容容器必须先挂到带主题的编辑器再创建分组:滑块数值框是
+    // setTextBoxStyle 时向"当时的 LookAndFeel"要的(createSliderTextBox),
+    // 没挂树时拿到的是默认 LnF,主题的圆角数值框/字号全应用不上。
+    content_.setSize(defaultWidth, 0);
+    viewport_.setViewedComponent(&content_, false);
+    viewport_.setScrollBarsShown(true, true);
+    addAndMakeVisible(viewport_);
 
     // 频谱分析器初始化：长短两个 Hann 窗 + 静音初始频谱。
     const auto initHann = [](auto& h) {
@@ -239,13 +246,10 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     pageButtons_[0].setToggleState(true, juce::dontSendNotification);
     refreshTabDots(); // 页签先于各开关初值出现，这里补一次点亮
 
-    content_.setSize(defaultWidth, 0);
-    viewport_.setViewedComponent(&content_, false);
-    viewport_.setScrollBarsShown(true, true);
+    // viewport/content 已在构造函数开头挂树(滑块数值框依赖它)。
     addAndMakeVisible(titleLabel_);
     addAndMakeVisible(languageLabel_);
     addAndMakeVisible(languageBox_);
-    addAndMakeVisible(viewport_);
     setResizable(true, false);
     setResizeLimits(320, 240, 1920, 2160);
     // 恢复记住的窗口尺寸（由定时器在用户停止拖拽边框约 1 秒后保存）。
@@ -721,6 +725,10 @@ void ViPER4HostAudioProcessorEditor::bindRow(ParamRow& row, const juce::String& 
     }
     else
     {
+        // 数值框是创建时向 LookAndFeel 要的(createSliderTextBox),必须先挂到
+        // 组件树让 getLookAndFeel() 找到主题,否则拿到的是默认 LnF 的普通
+        // Label,主题字号和圆角字段全都应用不上。
+        parent.addAndMakeVisible(row.slider);
         row.slider.setSliderStyle(juce::Slider::LinearHorizontal);
         row.slider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 84, 22);
         row.label.setJustificationType(juce::Justification::centredLeft);
@@ -732,8 +740,6 @@ void ViPER4HostAudioProcessorEditor::bindRow(ParamRow& row, const juce::String& 
         parent.addAndMakeVisible(row.label);
         if (row.comboAttachment != nullptr)
             parent.addAndMakeVisible(row.combo);
-        else if (row.sliderAttachment != nullptr)
-            parent.addAndMakeVisible(row.slider);
     }
 }
 
@@ -933,6 +939,27 @@ void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode
     abCopy_.setButtonText(tr(lang, "abCopy"));
     relabelEqBands(); // EQ 频段标签是频率文本，不走本地化键
     refreshPresetList(); // 重建下拉框，带上已翻译的预设名
+
+    // 参数名列宽按"本分组内最长标签"实测：固定宽度是按英文最长标签留的，
+    // 中文标签短，会在名字和控件之间留出一大块空白。分组之间垂直堆叠，
+    // 各用各的列宽即可，组内对齐由同一列宽保证。+12 = 描边内边距 + 呼吸空间。
+    const juce::Font labelFont(juce::FontOptions(13.0f));
+    for (auto& pg : groups_)
+    {
+        int maxW = 0;
+        const auto measure = [&labelFont, &maxW](const juce::String& s) {
+            maxW = juce::jmax(maxW,
+                (int) std::ceil(juce::GlyphArrangement::getStringWidth(labelFont, s)));
+        };
+        for (auto& row : pg->rows)
+            if (!row->isEnable)
+                measure(row->label.getText());
+        if (pg->hasFileRow)
+            measure(pg->fileLabel.getText());
+        if (maxW > 0)
+            pg->labelWidth = maxW + 12;
+    }
+    resized(); // 列宽变了，重排
 }
 
 // EQ 频段滑杆的标签按当前段数取引擎真实频点（本地化文件里的固定 ISO 名
@@ -1090,7 +1117,7 @@ void ViPER4HostAudioProcessorEditor::resized()
                 if (!row->label.isVisible())
                     continue;
                 auto rowBounds = rowsArea.removeFromTop(rowHeight).reduced(4, 1);
-                row->label.setBounds(rowBounds.removeFromLeft(labelWidth));
+                row->label.setBounds(rowBounds.removeFromLeft(pg->labelWidth));
                 if (row->buttonAttachment != nullptr)
                     row->toggle.setBounds(rowBounds.removeFromRight(46).withSizeKeepingCentre(38, 18));
                 else if (row->comboAttachment != nullptr)
@@ -1106,7 +1133,7 @@ void ViPER4HostAudioProcessorEditor::resized()
                 // 若将来给它们加曲线/量表，这里的 Y 要加上 graphicH。
                 auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
                     columnWidth - 16, rowHeight).reduced(4, 1);
-                pg->fileLabel.setBounds(fileBounds.removeFromLeft(labelWidth));
+                pg->fileLabel.setBounds(fileBounds.removeFromLeft(pg->labelWidth));
                 pg->fileButton.setBounds(fileBounds.removeFromLeft(94).withSizeKeepingCentre(90, 26));
                 pg->fileStatus.setBounds(fileBounds);
             }
