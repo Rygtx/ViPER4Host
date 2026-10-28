@@ -28,6 +28,7 @@ constexpr uint32_t text = 0xffb6bdc8;
 constexpr uint32_t textBright = 0xffedf0f4;
 constexpr uint32_t textDim = 0xff7a8290;
 constexpr uint32_t gr = 0xfff5a86a; // 增益衰减琥珀色（行业惯例）
+constexpr uint32_t danger = 0xffe0564a; // 告警（GR 超量程）
 
 inline juce::Colour c(uint32_t v) { return juce::Colour(v); }
 } // namespace theme

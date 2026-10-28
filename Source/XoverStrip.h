@@ -120,6 +120,12 @@ private:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        if (e.mods.isPopupMenu())
+        {
+            grRange = grRange >= 48.0f ? 12.0f : grRange * 2.0f; // 12 -> 24 -> 48
+            repaint();
+            return;
+        }
         dragCross = pickHandle(e.position);
         if (dragCross > 0)
         {
@@ -183,6 +189,7 @@ private:
     {
         using namespace theme;
         const auto b = bar();
+        bool grOver = false; // 任一频段超出量程
         g.setColour(c(field));
         g.fillRoundedRectangle(b, 5.0f);
 
@@ -209,14 +216,17 @@ private:
                 g.setColour(c(accent).withAlpha(0.12f));
                 g.fillRect(juce::Rectangle<float>(lo, b.getY(), hi - lo, b.getHeight()));
             }
-            // 该频段的实时增益衰减柱（0..-24 dB -> 柱高）
+            // 该频段的实时增益衰减柱（0..-grRange dB -> 柱高），超量程变红
             if (bandGrDb != nullptr)
             {
-                const float grDb = juce::jlimit(0.0f, 24.0f, -bandGrDb[band]);
-                const float h = grDb / 24.0f * (b.getHeight() - 8.0f);
+                const float raw = -bandGrDb[band];
+                const float grDb = juce::jlimit(0.0f, grRange, raw);
+                const float h = grDb / grRange * (b.getHeight() - 8.0f);
+                if (raw > grRange)
+                    grOver = true;
                 if (h > 1.0f)
                 {
-                    g.setColour(c(gr));
+                    g.setColour(c(raw > grRange ? danger : gr));
                     g.fillRect(juce::Rectangle<float>((lo + hi) * 0.5f - 3.0f, b.getBottom() - 4.0f - h, 6.0f, h));
                 }
             }
@@ -246,10 +256,19 @@ private:
                 juce::Rectangle<float>(b.getX(), 0.0f, b.getWidth(), b.getY() + 2.0f),
                 juce::Justification::centredRight);
         }
+        else if (bandGrDb != nullptr)
+        {
+            // 空闲时右上角显示 GR 量程（右键循环切换），超量程时变红
+            g.setColour(c(grOver ? danger : textDim));
+            g.drawText("GR " + juce::String(static_cast<int>(grRange)) + " dB",
+                juce::Rectangle<float>(b.getX(), 0.0f, b.getWidth(), b.getY() + 2.0f),
+                juce::Justification::centredRight);
+        }
     }
 
     juce::AudioProcessorValueTreeState& apvts;
     int bandCount = 0, selected = 0, hoverCross = -1, dragCross = -1;
+    float grRange = 24.0f;
     const float* bandGrDb = nullptr;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
