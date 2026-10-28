@@ -983,6 +983,11 @@ void ViPER4HostAudioProcessorEditor::resized()
     }
 
     content_.setSize(contentWidth, y + gap);
+
+    // 垂直滚动条出现/消失会改变可视宽度，导致本次布局用的宽度已过期；
+    // 重跑一次布局让内容宽度跟上（滚动条状态稳定后第二轮即收敛）。
+    if (juce::jmax(560, viewport_.getMaximumVisibleWidth()) != contentWidth)
+        resized();
 }
 
 void ViPER4HostAudioProcessorEditor::paint(juce::Graphics& g)
