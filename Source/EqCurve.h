@@ -357,7 +357,10 @@ private:
     {
         const int b = dragBand >= 0 ? dragBand : pick(e.position);
         if (b < 0 || wheel.deltaY == 0)
+        {
+            Component::mouseWheelMove(e, wheel); // 不在频段上:冒泡给 Viewport 滚动
             return;
+        }
         // Ctrl/Alt + 滚轮调 Q；普通滚轮调增益。
         if (mode == Mode::Dynamic && (e.mods.isCtrlDown() || e.mods.isAltDown()))
         {

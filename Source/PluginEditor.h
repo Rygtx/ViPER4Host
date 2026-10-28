@@ -11,6 +11,36 @@
 #include <array>
 #include <vector>
 
+namespace v4h
+{
+// 视口内的参数控件:滚轮默认冒泡给父级(页面滚动),按住 Ctrl/Alt 时才由
+// 控件处理(调参)。否则悬停在滑块/下拉框上时页面滚不动、还会误调参数。
+// 与 EqCurve 的 Ctrl/Alt 调 Q 保持同一修饰键约定。
+class WheelSlider : public juce::Slider
+{
+public:
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
+    {
+        if (e.mods.isCtrlDown() || e.mods.isAltDown())
+            juce::Slider::mouseWheelMove(e, wheel);
+        else
+            Component::mouseWheelMove(e, wheel);
+    }
+};
+
+class WheelCombo : public juce::ComboBox
+{
+public:
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override
+    {
+        if (e.mods.isCtrlDown() || e.mods.isAltDown())
+            juce::ComboBox::mouseWheelMove(e, wheel);
+        else
+            Component::mouseWheelMove(e, wheel);
+    }
+};
+} // namespace v4h
+
 class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                              private juce::Timer
 {
@@ -33,8 +63,8 @@ private:
         // （开关本身就是启用控件）。
         bool isEnable = false;
         juce::Label label;
-        juce::Slider slider;       // 浮点参数用
-        juce::ComboBox combo;      // 选项参数用
+        v4h::WheelSlider slider;   // 浮点参数用(滚轮默认透传,见 v4h::WheelSlider)
+        v4h::WheelCombo combo;     // 选项参数用
         juce::ToggleButton toggle; // 布尔参数用
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sliderAttachment;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> comboAttachment;
