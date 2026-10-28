@@ -565,7 +565,6 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
                 *processor_.getParametersState().getParameter(pg->enableParamId),
                 [this](float) { refreshCollapse(); },
                 nullptr);
-            pg->enableAttachment->sendInitialUpdate();
         }
     }
 
@@ -586,6 +585,9 @@ ViPER4HostAudioProcessorEditor::ParamGroup* ViPER4HostAudioProcessorEditor::addG
     content_.addAndMakeVisible(pg->group);
     pg->group.toBack();
     groups_.push_back(std::move(pg));
+    // 先入列再读初值：refreshCollapse 遍历 groups_，入列前调用会漏掉
+    // 本分组自己，导致最后一个带开关的分组启动时折叠状态错误。
+    groups_.back()->enableAttachment->sendInitialUpdate();
     return groups_.back().get();
 }
 
