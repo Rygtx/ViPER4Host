@@ -164,9 +164,12 @@ private:
 
     void mouseMove(const juce::MouseEvent& e) override
     {
-        hoverCross = dragCross > 0 ? dragCross : pickHandle(e.position);
-        setMouseCursor(hoverCross > 0 ? juce::MouseCursor::LeftRightResizeCursor
-                                      : juce::MouseCursor::PointingHandCursor);
+        const int h = dragCross > 0 ? dragCross : pickHandle(e.position);
+        if (h == hoverCross)
+            return;
+        hoverCross = h;
+        setMouseCursor(h > 0 ? juce::MouseCursor::LeftRightResizeCursor
+                             : juce::MouseCursor::PointingHandCursor);
         repaint();
     }
 

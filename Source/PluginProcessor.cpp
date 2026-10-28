@@ -28,6 +28,7 @@ ViPER4HostAudioProcessor::ViPER4HostAudioProcessor()
     }
     for (int c = 0; c < 4; ++c)
         mbcCrossPtrs_[c] = parameters_.getRawParameterValue("mbcCross" + juce::String(c + 1));
+    bypassPtr_ = parameters_.getRawParameterValue("bypass");
     for (int b = 0; b < 5; ++b)
     {
         const auto pfx = "mbc" + juce::String(b + 1);
@@ -468,7 +469,7 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         pendingMutex_.unlock();
     }
 
-    const bool bypassed = parameters_.getRawParameterValue("bypass")->load(std::memory_order_relaxed) >= 0.5f;
+    const bool bypassed = bypassPtr_->load(std::memory_order_relaxed) >= 0.5f;
     if (!bypassed)
     {
         viper::ViPERParams params{};

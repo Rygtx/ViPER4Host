@@ -67,6 +67,9 @@ public:
         }
     }
 
+    // 编辑器用它区分频响曲线（跟频谱重绘）和幽灵点（跟增益重绘）。
+    bool isDynamic() const { return mode == Mode::Dynamic; }
+
     // 绑定前 `count` 个频段：前缀 "eqBand"（图形 EQ，eqBand1..N）或
     // "de"（动态 EQ，de1Freq/Q/Gain/Type ……）。频段数变化时会再次调用；
     // 重建参数附着。
@@ -76,8 +79,10 @@ public:
         bandCount = juce::jlimit(1, 31, count);
         selected = juce::jlimit(0, bandCount - 1, selected);
         attachments.clear();
-        const char* suffixes[] = { "Freq", "Q", "Gain" };
-        const int perBand = mode == Mode::Dynamic ? 3 : 1;
+        // 动态模式连 Type 一起附着：快照缓存靠附着回调失效，没有它
+        // 切换滤波类型后曲线会一直用旧 type 画。
+        const char* suffixes[] = { "Freq", "Q", "Gain", "Type" };
+        const int perBand = mode == Mode::Dynamic ? 4 : 1;
         for (int b = 0; b < bandCount; ++b)
         {
             for (int s = 0; s < perBand; ++s)
@@ -85,10 +90,11 @@ public:
                 attachments.push_back(std::make_unique<juce::ParameterAttachment>(
                     *apvts.getParameter(mode == Mode::Dynamic ? bandId(b, suffixes[s])
                                                               : bandId(b, nullptr)),
-                    [this](float) { repaint(); }, nullptr));
+                    [this](float) { snapshotDirty_ = true; repaint(); }, nullptr));
                 attachments.back()->sendInitialUpdate();
             }
         }
+        snapshotDirty_ = true;
         repaint();
     }
 
@@ -202,22 +208,29 @@ private:
             begin ? p->beginChangeGesture() : p->endChangeGesture();
     }
 
-    std::vector<Band> snapshot() const
+    // 每次绘制 / 拖动命中测试时用。参数值只在附着回调里变，所以快照
+    // 按需重建（回调置 snapshotDirty_），不在每次 paint / mouseMove 时
+    // 重新拼 id 查参数。
+    const std::vector<Band>& snapshot() const
     {
-        std::vector<Band> bs((size_t) bandCount);
-        for (int b = 0; b < bandCount; ++b)
+        if (snapshotDirty_)
         {
-            auto& band = bs[(size_t) b];
-            band.f = mode == Mode::Dynamic
-                ? juce::jlimit(minFreq, maxFreq, paramValue(bandId(b, "Freq")))
-                : (double) freqTable(bandCount)[b];
-            band.g = juce::jlimit(-maxDb, maxDb, paramValue(gainId(b)));
-            band.q = juce::jlimit(0.3, 16.0, (double) paramValue(bandId(b, "Q")));
-            if (auto* p = dynamic_cast<juce::AudioParameterChoice*>(
-                    apvts.getParameter(bandId(b, "Type"))))
-                band.type = p->getIndex();
+            snapshotCache_.resize((size_t) bandCount);
+            for (int b = 0; b < bandCount; ++b)
+            {
+                auto& band = snapshotCache_[(size_t) b];
+                band.f = mode == Mode::Dynamic
+                    ? juce::jlimit(minFreq, maxFreq, paramValue(bandId(b, "Freq")))
+                    : (double) freqTable(bandCount)[b];
+                band.g = juce::jlimit(-maxDb, maxDb, paramValue(gainId(b)));
+                band.q = juce::jlimit(0.3, 16.0, (double) paramValue(bandId(b, "Q")));
+                if (auto* p = dynamic_cast<juce::AudioParameterChoice*>(
+                        apvts.getParameter(bandId(b, "Type"))))
+                    band.type = p->getIndex();
+            }
+            snapshotDirty_ = false;
         }
-        return bs;
+        return snapshotCache_;
     }
 
     // --- 几何 --------------------------------------------------------------
@@ -263,7 +276,7 @@ private:
         int best = -1;
         // 图形模式：抓取落在该频段 x 列上的任意点；动态模式：最近的节点。
         float bestD = mode == Mode::Graphic ? 24.0f * 24.0f : 28.0f * 28.0f;
-        const auto bs = snapshot();
+        const auto& bs = snapshot();
         for (int b = 0; b < bandCount; ++b)
         {
             const float dx = pos.x - xOf(bs[(size_t) b].f);
@@ -460,7 +473,7 @@ private:
         if (bandCount == 0)
             return;
         const auto p = plot();
-        const auto bs = snapshot();
+        const auto& bs = snapshot();
 
         // 网格：对数频率刻度 + dB 横线
         g.setFont(juce::Font(juce::FontOptions(10.0f)));
@@ -669,6 +682,8 @@ private:
     const float* spectrumDb = nullptr; // 编辑器持有，kSpectrumPoints 个元素
     const float* liveGainDb = nullptr; // 编辑器持有，每个动态 EQ 频段一个
     std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
+    mutable std::vector<Band> snapshotCache_; // 见 snapshot()，附着回调失效
+    mutable bool snapshotDirty_ = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EqCurve)
 };

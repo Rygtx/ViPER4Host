@@ -314,13 +314,25 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
         auto* p = processor_.getParametersState().getParameter(id);
         return p != nullptr && p->getValue() > 0.5f;
     };
+    // 拉取顺便记录电平是否变化：空闲（暂停/静音、GR 归零后）时省掉无谓重绘。
     const float fetGr = isOn("fetEnable") ? m.fetGrDb.load() : 0.0f;
     const float limGr = m.limiterGrDb.load();
+    bool grChanged = fetGr != fetGrPrev_ || limGr != limGrPrev_;
+    fetGrPrev_ = fetGr;
+    limGrPrev_ = limGr;
     const bool mbcOn = isOn("mbcEnable");
     for (int b = 0; b < 5; ++b)
-        mbcGrDb_[b] = mbcOn ? m.mbcGrDb[(size_t) b].load() : 0.0f;
+    {
+        const float v = mbcOn ? m.mbcGrDb[(size_t) b].load() : 0.0f;
+        grChanged = grChanged || v != mbcGrDb_[b];
+        mbcGrDb_[b] = v;
+    }
     for (int b = 0; b < 10; ++b)
-        deGainDb_[b] = isOn("deEnable") ? m.deGainDb[(size_t) b].load() : 0.0f;
+    {
+        const float v = isOn("deEnable") ? m.deGainDb[(size_t) b].load() : 0.0f;
+        grChanged = grChanged || v != deGainDb_[b];
+        deGainDb_[b] = v;
+    }
 
     // 频谱：多分辨率 FFT。低频带用 8192 点长窗（5.9 Hz 分辨率，20 Hz 附近
     // 才能对齐调节点），高频带用 2048 点短窗（瞬态不糊）。带内取 bin 最大
@@ -329,6 +341,7 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
     auto& fifo = processor_.spectrumFifo_;
     constexpr int fftLong = 8192, fftShort = 2048;
     constexpr double crossHz = 400.0; // 低于此频率用长窗
+    const bool hadSamples = fifo.getNumReady() > 0;
     // 滑动窗：每帧把 FIFO 里新到的样本全部取走追加到窗尾（攒够 8192 才
     // 跑一次的话，48 kHz 下频谱只有约 5 fps，看着卡）。
     if (processor_.getSampleRate() > 0.0)
@@ -360,7 +373,11 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
             fifo.finishedRead(size1 + size2);
         }
     }
-    if (windowFill_ >= fftLong && processor_.getSampleRate() > 0.0)
+    // 空闲省电：没有新样本、包络也已落定（上一帧没有衰减）时，FFT 结果
+    // 必然和上一帧相同，整段跳过。
+    bool spectrumChanged = false;
+    if (windowFill_ >= fftLong && processor_.getSampleRate() > 0.0
+        && (hadSamples || spectrumDecaying_))
     {
         const double fs = processor_.getSampleRate();
 
@@ -451,10 +468,17 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
             smooth = dst;
         }
         for (int i = 0; i < v4h::EqCurve::kSpectrumPoints; ++i)
-            spectrumDb_[(size_t) i] = juce::jmax(smooth[(size_t) i], spectrumDb_[(size_t) i] - 1.25f);
+        {
+            const float next = juce::jmax(smooth[(size_t) i], spectrumDb_[(size_t) i] - 1.25f);
+            spectrumChanged |= next != spectrumDb_[(size_t) i];
+            spectrumDb_[(size_t) i] = next;
+        }
+        // 本帧还在衰减说明下帧（即使没新样本）也可能继续变。
+        spectrumDecaying_ = spectrumChanged;
     }
 
-    // 把实时数据推给可见的曲线图，并按当前帧率刷新它们。
+    // 把实时数据推给可见的曲线图；只在数据真的变了时才重绘（空闲时
+    // 两个 FFT + 整条曲线的每帧重绘是大头）。
     const double fs = processor_.getSampleRate();
     for (auto& pg : groups_)
     {
@@ -464,10 +488,12 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
             pg->grMeter->setLevel(pg->groupId == "groupFet" ? fetGr : limGr);
         if (pg->curve != nullptr)
         {
-            pg->curve->setSampleRate(fs);
-            pg->curve->repaint();
+            pg->curve->setSampleRate(fs); // 变化时自己触发重绘
+            // 动态曲线的幽灵点画的是 deGainDb_，跟 GR 一起动。
+            if (spectrumChanged || (grChanged && pg->curve->isDynamic()))
+                pg->curve->repaint();
         }
-        if (pg->strip != nullptr)
+        if (pg->strip != nullptr && grChanged)
             pg->strip->repaint();
     }
 }

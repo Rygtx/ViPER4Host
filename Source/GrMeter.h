@@ -18,9 +18,15 @@ public:
     void setLevel(float reductionDb) // 0 = 无衰减，-rangeDb = 满量程
     {
         const float raw = -reductionDb;
-        over = raw > rangeDb;
-        current = juce::jlimit(0.0f, rangeDb, raw);
-        peak = juce::jmax(peak * 0.97f, current); // 峰值保持并缓慢回落
+        const bool nowOver = raw > rangeDb;
+        const float nowCurrent = juce::jlimit(0.0f, rangeDb, raw);
+        const float nowPeak = juce::jmax(peak * 0.97f, nowCurrent); // 峰值保持并缓慢回落
+        // 数值没变就不重绘；峰值 > 0 时 nowPeak 每次都在回落，不受影响。
+        if (nowCurrent == current && nowPeak == peak && nowOver == over)
+            return;
+        over = nowOver;
+        current = nowCurrent;
+        peak = nowPeak;
         repaint();
     }
 

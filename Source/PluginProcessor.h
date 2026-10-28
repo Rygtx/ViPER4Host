@@ -86,6 +86,7 @@ private:
     DeBandPtrs deBandPtrs_[10]{};
     MbcBandPtrs mbcBandPtrs_[5]{};
     std::atomic<float>* mbcCrossPtrs_[4]{};
+    std::atomic<float>* bypassPtr_ = nullptr;
 
     struct PendingKernel
     {

@@ -190,6 +190,9 @@ private:
     // 曲线图绘制时读取的电平快照。
     float mbcGrDb_[5]{};
     float deGainDb_[10]{};
+    // 空闲检测：上一帧的电平 / 频谱是否还在动（见 pullMetersAndSpectrum）。
+    float fetGrPrev_ = 0.0f, limGrPrev_ = 0.0f;
+    bool spectrumDecaying_ = false;
     int resizeIdleTicks_ = -1; // -1 = 尺寸已保存；窗口缩放后开始计数
     std::array<int, 2> savedSize_{660, 600};
 
