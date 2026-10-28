@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           $cmakeText = Get-Content "CMakeLists.txt" -Raw
-          $pluginVersionMatch = [regex]::Match($cmakeText, 'set\(VIPER4HOST_PLUGIN_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+)"\)')
+          $pluginVersionMatch = [regex]::Match($cmakeText, 'set\(VIPER4HOST_PLUGIN_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?)"\)')
           if (-not $pluginVersionMatch.Success) {
             throw "Failed to read VIPER4HOST_PLUGIN_VERSION from CMakeLists.txt"
           }
