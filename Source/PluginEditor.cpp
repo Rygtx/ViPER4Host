@@ -17,33 +17,31 @@ constexpr int siViewHeight = 200; // 立体声声像器场视图
 constexpr int grMeterHeight = 30; // FET / 限幅器增益衰减量表
 
 // 分类页签，按顺序。数量必须与头文件里的 numPages 一致。
-const char* pageKeys[] = { "tabIn", "tabVhe", "tabEq", "tabStage", "tabDynamics",
+const char* pageKeys[] = { "tabIn", "tabEq", "tabStage", "tabDynamics",
     "tabTone", "tabOutput" };
 static_assert(sizeof(pageKeys) / sizeof(pageKeys[0]) == ViPER4HostAudioProcessorEditor::numPages);
 
-// 每个分组属于哪个分类页签。页签按引擎信号链排列（ViPER::Process 的处理
+// 每个分组属于哪个分类页签。页签大体按引擎信号链排列（ViPER::Process 的处理
 // 顺序）：卷积器 -> VHE -> DDC -> 频谱延展 -> EQ -> 动态 EQ -> 声场环绕 ->
 // 立体声声像器 -> 差分环绕 -> 播放增益 -> MBC -> FET -> 动态系统 -> 电子管
 // -> 低音们 -> clarity -> cure -> analogX -> 混响 -> 扬声器修正 -> LUFS ->
-// 限幅器。每个页签是信号链上一段连续区间，页签内的分组也按这条链的顺序
-// 排列（下面的分组创建必须与之对应）。
+// 限幅器。例外：VHE 只有两个控件，按功能归入"声场/环绕"页而非信号链位置。
+// 页签内的分组也按这条链的顺序排列（下面的分组创建必须与之对应）。
 int pageOf(const juce::String& gid)
 {
     if (gid == "groupConv" || gid == "groupDdc")
         return 0; // 输入侧修正：卷积核、DDC 曲线
-    if (gid == "groupVHE")
-        return 1; // 耳机环绕虚拟化
     if (gid == "groupSpecExt" || gid == "groupEq" || gid == "groupDe")
-        return 2; // 频率响应：激励器、EQ、动态 EQ
-    if (gid == "groupField" || gid == "groupSi" || gid == "groupDiff")
-        return 3; // 声场 / 环绕
+        return 1; // 频率响应：激励器、EQ、动态 EQ
+    if (gid == "groupVHE" || gid == "groupField" || gid == "groupSi" || gid == "groupDiff")
+        return 2; // 声场 / 环绕
     if (gid == "groupAGC" || gid.startsWith("groupMbc") || gid == "groupFet" || gid == "groupDs")
-        return 4; // 动态类，含动态系统
+        return 3; // 动态类，含动态系统
     if (gid == "groupTube" || gid == "groupPsyBass" || gid == "groupBass"
         || gid == "groupBassMono" || gid == "groupClarity" || gid == "groupCure"
         || gid == "groupAx" || gid == "groupReverb")
-        return 5; // 音染色：电子管、低音谐波、clarity、cure、analogX、混响
-    return 6; // 输出：扬声器修正、LUFS、限幅器/主控
+        return 4; // 音染色：电子管、低音谐波、clarity、cure、analogX、混响
+    return 5; // 输出：扬声器修正、LUFS、限幅器/主控
 }
 
 // 分频段参数（mbc3Threshold、de7Freq）按角色在所有频段间共用一个标签键：
@@ -89,7 +87,6 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     // 分组都按处理顺序排列。
     addGroup("groupConv", { "convEnable", "convCrossChannel" });
     addGroup("groupDdc", { "ddcEnable" });
-    addGroup("groupVHE", { "vheEnable", "vheQuality" });
     addGroup("groupSpecExt", { "specExtEnable", "specExtStrength", "specExtExciter" });
 
     {
@@ -115,6 +112,7 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
                 deBandRows_.push_back(row.get()); // 创建顺序 == 绑定顺序
     }
 
+    addGroup("groupVHE", { "vheEnable", "vheQuality" });
     addGroup("groupField", { "fieldEnable", "fieldWidening", "fieldMidImage", "fieldDepth" });
     addGroup("groupSi", { "siEnable" });
     groups_.back()->siView = std::make_unique<v4h::SiView>(processor_.getParametersState());

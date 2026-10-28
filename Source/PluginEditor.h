@@ -16,7 +16,7 @@ class ViPER4HostAudioProcessorEditor final : public juce::AudioProcessorEditor,
 {
 public:
     // 分类页签数量；与 .cpp 里的 pageKeys 保持同步。
-    static constexpr int numPages = 7;
+    static constexpr int numPages = 6;
 
     explicit ViPER4HostAudioProcessorEditor(ViPER4HostAudioProcessor&);
     ~ViPER4HostAudioProcessorEditor() override;
