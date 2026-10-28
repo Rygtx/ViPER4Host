@@ -64,8 +64,6 @@ private:
         // （关 = 只剩标题栏），它变化时 refreshCollapse() 都会运行。
         juce::String enableParamId;
         std::unique_ptr<juce::ParameterAttachment> enableAttachment;
-        // 依赖频段数的分组（EQ/DynEQ/MBC 频段）可以整体隐藏。
-        bool visible = true;
         // 该分组所在的分类页签，以及折叠状态。折叠的分组只显示标题栏；
         // 启用开关就放在那条标题栏里。
         int page = 0;

@@ -169,6 +169,10 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     groups_.back()->grMeter = std::make_unique<v4h::GrMeter>(); // 输出限幅器 GR
     groups_.back()->group.addAndMakeVisible(*groups_.back()->grMeter);
 
+    // 图形对象（curve/strip 等）是各 addGroup 返回后才挂上的，期间各自
+    // 跑过的 refreshCollapse 可能误判"无正文"；这里全部齐备后再统一推导。
+    refreshCollapse();
+
     // 频段数参数决定显示哪些频段行/分组。
     for (const char* id : { "eqBandCount", "deBandCount", "mbcBandCount" })
     {
@@ -353,7 +357,7 @@ void ViPER4HostAudioProcessorEditor::pullMetersAndSpectrum()
     const double fs = processor_.getSampleRate();
     for (auto& pg : groups_)
     {
-        if (!pg->visible || pg->page != currentPage_ || pg->collapsed)
+        if (pg->page != currentPage_ || pg->collapsed)
             continue;
         if (pg->grMeter != nullptr)
             pg->grMeter->setLevel(pg->groupId == "groupFet" ? fetGr : limGr);
@@ -675,11 +679,17 @@ void ViPER4HostAudioProcessorEditor::refreshCollapse()
         if (pg->groupId == "groupMbcSel")
             expanded = expanded && isOn("mbcEnable");
         pg->collapsed = !expanded;
-        // 折叠状态同步到组件属性，Theme.h 据此决定标题栏圆角画法。
-        if (pg->collapsed)
-            pg->group.getProperties().set("v4hCollapsed", 1);
+        // 标题栏样式同步到组件属性，Theme.h 据此决定圆角画法。
+        // 折叠态、或正文为零的分组（如扬声器优化，展开也没有内容）
+        // 都按"只剩标题栏"画：四角全圆，不画与正文的分隔线。
+        const bool hasBody = pg->hasFileRow || pg->curve != nullptr || pg->strip != nullptr
+            || pg->siView != nullptr || pg->grMeter != nullptr
+            || std::any_of(pg->rows.begin(), pg->rows.end(),
+                [](const auto& r) { return !r->isEnable; });
+        if (pg->collapsed || !hasBody)
+            pg->group.getProperties().set("v4hTitleOnly", 1);
         else
-            pg->group.getProperties().remove("v4hCollapsed");
+            pg->group.getProperties().remove("v4hTitleOnly");
     }
     resized();
 }
@@ -874,8 +884,7 @@ void ViPER4HostAudioProcessorEditor::resized()
         row.toggle.setVisible(on);
     };
 
-    // 图形 EQ 超出当前段数的频段滑杆不进网格（MBC 频段分组由
-    // updateBandVisibility 通过 pg->visible 隐藏）。
+    // 图形 EQ 超出当前段数的频段滑杆不进网格。
     int eqN = 31;
     if (auto* p = dynamic_cast<juce::AudioParameterChoice*>(
             processor_.getParametersState().getParameter("eqBandCount")))
@@ -887,7 +896,7 @@ void ViPER4HostAudioProcessorEditor::resized()
     int y = gap;
     for (auto& pg : groups_)
     {
-        const bool show = pg->visible && pg->page == currentPage_;
+        const bool show = pg->page == currentPage_;
         pg->group.setVisible(show);
         if (!show)
         {

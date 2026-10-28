@@ -228,9 +228,9 @@ public:
         g.setColour(c(panel));
         g.fillRoundedRectangle(card, cs);
 
-        // 四角全圆仅限"只剩标题栏"的分组。折叠状态由编辑器通过组件属性
-        // 传入（refreshCollapse 里维护），不靠卡片高度猜。
-        const bool titleOnly = group.getProperties().getVarPointer("v4hCollapsed") != nullptr;
+        // 四角全圆仅限"只剩标题栏"的分组（折叠态，或正文为零）。
+        // 状态由编辑器通过组件属性传入（refreshCollapse 里维护），不靠卡片高度猜。
+        const bool titleOnly = group.getProperties().getVarPointer("v4hTitleOnly") != nullptr;
         auto hdr = card.removeFromTop(juce::jmin(headerH, card.getHeight()));
         g.setColour(c(panelHeader));
         if (titleOnly)
