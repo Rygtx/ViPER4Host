@@ -207,13 +207,19 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
         abButtons_[s].setRadioGroupId(2);
         abButtons_[s].onClick = [this, s] {
             if (abButtons_[s].getToggleState())
+            {
                 processor_.activateAbSlot(s);
+                refreshFileStatuses();
+            }
         };
         addAndMakeVisible(abButtons_[s]);
     }
     abButtons_[processor_.activeAbSlot].setToggleState(true, juce::dontSendNotification);
     abCopy_.onClick = [this] {
-        processor_.abSlots[processor_.activeAbSlot] = processor_.getParametersState().copyState();
+        // 拷到另一侧（MANUAL 的语义）。拷进当前槽位没意义——切换时
+        // activateAbSlot 本来就会把当前状态存回活动槽位。
+        processor_.abSlots[1 - processor_.activeAbSlot]
+            = processor_.getParametersState().copyState();
     };
     addAndMakeVisible(abCopy_);
     presetButton_.onClick = [this] { openPresetMenu(); };
@@ -528,6 +534,7 @@ void ViPER4HostAudioProcessorEditor::loadPreset(const juce::File& file)
     else
         return; // 坏文件：不应用也不假装已载入（否则按钮/保存预填全错位）。
     currentPresetFile_ = file;
+    refreshFileStatuses(); // 预设可能带不同的卷积/DDC 路径
     updatePresetButtonText(); // 文件列表没变，无需重扫磁盘。
 }
 
@@ -937,6 +944,13 @@ void ViPER4HostAudioProcessorEditor::refreshFileStatus(ParamGroup& group)
             ? v4h::localisation::tr(processor_.getUiLanguage(), "noFile")
             : juce::File(path).getFileName(),
         juce::dontSendNotification);
+}
+
+void ViPER4HostAudioProcessorEditor::refreshFileStatuses()
+{
+    for (auto& pg : groups_)
+        if (pg->hasFileRow)
+            refreshFileStatus(*pg);
 }
 
 void ViPER4HostAudioProcessorEditor::relabelAll(const juce::String& languageCode)

@@ -109,6 +109,9 @@ private:
     std::mutex pendingMutex_;
     std::shared_ptr<PendingKernel> pendingKernel_;
     std::shared_ptr<PendingDdc> pendingDdc_;
+    // 已成功载入的卷积/DDC 文件路径（仅消息线程用）。A/B、预设换树时
+    // 只带路径不带内核，据此判断要不要重载。
+    juce::String loadedConvolverPath_, loadedDdcPath_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ViPER4HostAudioProcessor)
 };

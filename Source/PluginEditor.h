@@ -131,6 +131,8 @@ private:
     void selectLanguage();
     void pickFile(ParamGroup& group);
     void refreshFileStatus(ParamGroup& group);
+    // A/B 切换、预设载入换树后刷新全部文件名标签（可能指向另一槽位的文件）。
+    void refreshFileStatuses();
     // 60 Hz 电平刷新：轮询处理器电平、重算频谱 FFT，
     // 并重绘可见的曲线图 / GR 表。
     void pullMetersAndSpectrum();

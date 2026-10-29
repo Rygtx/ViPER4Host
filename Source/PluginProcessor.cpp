@@ -732,6 +732,7 @@ juce::String ViPER4HostAudioProcessor::loadConvolverFile(const juce::String& pat
         pendingKernel_ = std::move(kernel);
     }
     parameters_.state.setProperty("convolverPath", path, nullptr);
+    loadedConvolverPath_ = path;
     return {};
 }
 
@@ -751,6 +752,7 @@ juce::String ViPER4HostAudioProcessor::loadDdcFile(const juce::String& path)
         pendingDdc_ = std::move(ddc);
     }
     parameters_.state.setProperty("ddcPath", path, nullptr);
+    loadedDdcPath_ = path;
     return {};
 }
 
@@ -758,9 +760,19 @@ void ViPER4HostAudioProcessor::applyStateTree(const juce::ValueTree& newState)
 {
     // uiLanguage 属性存在状态树里，所以换树时要带过去。
     const auto lang = getUiLanguage();
-    juce::ScopedLock lock(getCallbackLock());
-    parameters_.replaceState(newState);
-    parameters_.state.setProperty("uiLanguage", lang, nullptr);
+    {
+        juce::ScopedLock lock(getCallbackLock());
+        parameters_.replaceState(newState);
+        parameters_.state.setProperty("uiLanguage", lang, nullptr);
+    }
+    // convolverPath/ddcPath 只存路径，内核不随树走：切槽位/换预设后与
+    // 已载入的不一致就重载。文件 IO 放在锁外，别堵住音频线程。
+    if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString();
+        conv.isNotEmpty() && conv != loadedConvolverPath_)
+        loadConvolverFile(conv);
+    if (const auto ddc = parameters_.state.getProperty("ddcPath", {}).toString();
+        ddc.isNotEmpty() && ddc != loadedDdcPath_)
+        loadDdcFile(ddc);
 }
 
 void ViPER4HostAudioProcessor::activateAbSlot(int slot)
@@ -822,7 +834,10 @@ void ViPER4HostAudioProcessor::setStateInformation(const void* data, int sizeInB
         }
         if (stateXml != nullptr && stateXml->hasTagName(parameters_.state.getType()))
         {
-            parameters_.replaceState(juce::ValueTree::fromXml(*stateXml));
+            {
+                juce::ScopedLock lock(getCallbackLock());
+                parameters_.replaceState(juce::ValueTree::fromXml(*stateXml));
+            }
             // 重新加载恢复出的状态里记录的文件数据。
             if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString(); conv.isNotEmpty())
                 loadConvolverFile(conv);
