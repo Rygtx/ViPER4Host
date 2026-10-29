@@ -121,7 +121,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           $remoteTagLine = git ls-remote --refs origin "refs/tags/$releaseTag"
 
-          if ([string]::IsNullOrWhiteSpace($remoteTagLine)) {
+          if (-not [string]::IsNullOrWhiteSpace($remoteTagLine)) {
+            $remoteTagCommit = ($remoteTagLine -split '\s+')[0]
+
+            if ($remoteTagCommit -ne $env:GITHUB_SHA) {
+              # 版本号没变、tag 已指向旧提交：跳过发行（旧 Release 原样保留，
+              # CI 保持绿灯）；想再发行就改版本号，新 tag 自然走正常发行。
+              Write-Host "Release $releaseTag already exists on $remoteTagCommit; version unchanged, skipping release."
+              exit 0
+            }
+            # tag 已指向当前提交（同一提交重跑工作流）：继续刷新 Release 资产。
+          }
+          else {
             git rev-parse -q --verify "refs/tags/$releaseTag" *> $null
             if ($LASTEXITCODE -eq 0) {
               git tag -d $releaseTag | Out-Null
@@ -129,13 +140,6 @@ jobs:
 
             git tag $releaseTag $env:GITHUB_SHA
             git push origin "refs/tags/$releaseTag"
-          }
-          else {
-            $remoteTagCommit = ($remoteTagLine -split '\s+')[0]
-
-            if ($remoteTagCommit -ne $env:GITHUB_SHA) {
-              throw "Release tag $releaseTag already exists on $remoteTagCommit, refusing to move it to $env:GITHUB_SHA."
-            }
           }
 
           gh release view $releaseTag --repo $env:GITHUB_REPOSITORY *> $null
