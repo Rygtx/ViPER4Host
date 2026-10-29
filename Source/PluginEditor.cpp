@@ -244,11 +244,13 @@ ViPER4HostAudioProcessorEditor::ViPER4HostAudioProcessorEditor(ViPER4HostAudioPr
     addAndMakeVisible(languageLabel_);
     addAndMakeVisible(languageBox_);
     setResizable(true, false);
-    setResizeLimits(320, 240, 1920, 2160);
+    // 顶栏（标题 + 预设 + A/B + 语言）固定占 686px，最小宽度 690 刚好放下；
+    // 更窄时预设/语言下拉会互挤、A/B 按钮被挤出画外。
+    setResizeLimits(690, 240, 1920, 2160);
     // 恢复记住的窗口尺寸（由定时器在用户停止拖拽边框约 1 秒后保存）。
     auto& uiState = processor_.getParametersState().state;
     setSize(
-        juce::jlimit(320, 1920, (int) uiState.getProperty("uiWidth", defaultWidth)),
+        juce::jlimit(690, 1920, (int) uiState.getProperty("uiWidth", defaultWidth)),
         juce::jlimit(240, 2160, (int) uiState.getProperty("uiHeight", defaultHeight)));
     savedSize_ = { getWidth(), getHeight() };
 

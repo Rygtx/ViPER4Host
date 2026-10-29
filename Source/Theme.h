@@ -493,7 +493,10 @@ public:
         using namespace theme;
         g.setColour(button.getToggleState() || over || down ? c(textBright) : c(text));
         g.setFont(getTextButtonFont(button, button.getHeight()));
-        g.drawText(button.getButtonText(), button.getLocalBounds(), juce::Justification::centred);
+        // 本地化按钮文字（Копировать、Выбрать файл… 等）可能比按钮宽；
+        // drawText 超宽直接裁掉，缩字号塞进去还能认。
+        g.drawFittedText(button.getButtonText(), button.getLocalBounds(),
+            juce::Justification::centred, 1);
     }
 };
 } // namespace v4h
