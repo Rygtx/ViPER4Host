@@ -24,6 +24,14 @@ public:
         : apvts(state)
     {
         setMouseClickGrabsKeyboardFocus(false);
+        // 换状态树（预设载入 / A/B 切换）后参数值会变，没有附着的话
+        // 画的是旧值——与 EqCurve / XoverStrip 的附着回调同款。
+        for (const auto* id : widthIds)
+            attachments.push_back(std::make_unique<juce::ParameterAttachment>(
+                *apvts.getParameter(id), [this](float) { repaint(); }, nullptr));
+        for (const auto* id : { "siLowCrossover", "siHighCrossover" })
+            attachments.push_back(std::make_unique<juce::ParameterAttachment>(
+                *apvts.getParameter(id), [this](float) { repaint(); }, nullptr));
     }
 
 private:
@@ -246,6 +254,7 @@ private:
 
     juce::AudioProcessorValueTreeState& apvts;
     int dragCross = -1, dragZone = -1, hoverCross = -1, hoverZone = -1;
+    std::vector<std::unique_ptr<juce::ParameterAttachment>> attachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SiView)
 };

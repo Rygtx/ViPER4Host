@@ -56,6 +56,9 @@ public:
 
     // 预设支持：换状态树时保住 uiLanguage 属性。
     void applyStateTree(const juce::ValueTree& newState);
+    // 按当前状态树里的路径对齐卷积/DDC 文件数据：不一致就重载，路径为空
+    // 且已载入过就走卸载（换树、恢复工程共用）。仅消息线程使用。
+    void syncFileDataFromState();
 
     // A/B 对比：槽位快照和切换逻辑放在处理器里，随 getStateInformation
     // 一起保存——关窗口、重开工程后 A/B 都还在。仅消息线程使用。
@@ -109,6 +112,8 @@ private:
     std::mutex pendingMutex_;
     std::shared_ptr<PendingKernel> pendingKernel_;
     std::shared_ptr<PendingDdc> pendingDdc_;
+    // 待执行的内核卸载（空路径槽位/工程）；与 pendingKernel_ 同锁保护。
+    bool pendingKernelUnload_ = false;
     // 已成功载入的卷积/DDC 文件路径（仅消息线程用）。A/B、预设换树时
     // 只带路径不带内核，据此判断要不要重载。
     juce::String loadedConvolverPath_, loadedDdcPath_;

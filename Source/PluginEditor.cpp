@@ -529,10 +529,15 @@ void ViPER4HostAudioProcessorEditor::loadPreset(const juce::File& file)
 {
     if (! file.existsAsFile())
         return;
-    if (auto xml = juce::parseXML(file))
-        processor_.applyStateTree(juce::ValueTree::fromXml(*xml));
-    else
+    auto xml = juce::parseXML(file);
+    if (xml == nullptr)
         return; // 坏文件：不应用也不假装已载入（否则按钮/保存预填全错位）。
+    // 预设目录里可能被放进任意的 XML（手册鼓励分享预设文件）；
+    // 不是本插件的参数树就不动当前状态。
+    auto tree = juce::ValueTree::fromXml(*xml);
+    if (tree.getType() != processor_.getParametersState().state.getType())
+        return;
+    processor_.applyStateTree(tree);
     currentPresetFile_ = file;
     refreshFileStatuses(); // 预设可能带不同的卷积/DDC 路径
     updatePresetButtonText(); // 文件列表没变，无需重扫磁盘。
@@ -540,6 +545,7 @@ void ViPER4HostAudioProcessorEditor::loadPreset(const juce::File& file)
 
 void ViPER4HostAudioProcessorEditor::openPresetMenu()
 {
+    refreshPresetList(); // 外部增删过的预设文件也能出现在这次菜单里
     const auto lang = v4h::localisation::normaliseLanguageCode(processor_.getUiLanguage());
 
     // 每个预设一个子菜单：载入/重命名/删除；当前载入的打勾。
@@ -607,6 +613,9 @@ void ViPER4HostAudioProcessorEditor::savePresetDialog()
             if (name.isNotEmpty())
             {
                 auto xml = self->processor_.getParametersState().copyState().createXml();
+                // 窗口尺寸是本机 UI 状态，不跟预设文件走（预设是拿来分享的）。
+                xml->removeAttribute("uiWidth");
+                xml->removeAttribute("uiHeight");
                 xml->setAttribute("presetName", name);
                 const auto saved = self->presetsDir().getChildFile(name + ".xml");
                 if (xml->writeTo(saved))
@@ -1164,7 +1173,13 @@ void ViPER4HostAudioProcessorEditor::resized()
 
         if (!collapsed)
         {
-            auto rowsArea = juce::Rectangle<int>(gap + 8, y + titleHeight + gap + graphicH, columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            // 正文从标题栏下留一个 gap 开始（组内坐标），图形条 + 参数行 +
+            // 文件行三块依次拼接：参数行区、文件行都从同一个 bodyArea 推导，
+            // 相邻两块的位置不会各算各的。
+            auto bodyArea = juce::Rectangle<int>(gap + 8, titleHeight + gap + graphicH,
+                columnWidth - 16, rowCount * rowHeight + fileRowHeight);
+            // 参数行是 content_ 的子控件，坐标系要平移到分组顶部 y。
+            auto rowsArea = bodyArea.withTrimmedBottom(fileRowHeight).translated(0, y);
             for (auto& row : pg->rows)
             {
                 if (!row->label.isVisible())
@@ -1180,12 +1195,9 @@ void ViPER4HostAudioProcessorEditor::resized()
             }
             if (pg->hasFileRow)
             {
-                // 文件行是 pg->group 的子控件：坐标相对分组，
-                // 而参数行在 content_ 坐标系里。
-                // shortcut: 未叠加 graphicH 偏移——conv/ddc 目前没有图形条，
-                // 若将来给它们加曲线/量表，这里的 Y 要加上 graphicH。
-                auto fileBounds = juce::Rectangle<int>(8, titleHeight + rowCount * rowHeight,
-                    columnWidth - 16, rowHeight).reduced(4, 1);
+                // 文件行是 pg->group 的子控件：坐标相对分组（rowsArea 再
+                // 平移 y 就是同一个 rect，所以两块天然对齐）。
+                auto fileBounds = bodyArea.removeFromBottom(fileRowHeight).reduced(4, 1);
                 pg->fileLabel.setBounds(fileBounds.removeFromLeft(pg->labelWidth));
                 pg->fileButton.setBounds(fileBounds.removeFromLeft(94).withSizeKeepingCentre(90, 26));
                 pg->fileStatus.setBounds(fileBounds);

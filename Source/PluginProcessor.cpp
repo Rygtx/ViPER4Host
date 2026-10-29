@@ -463,6 +463,11 @@ void ViPER4HostAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     {
         if (auto kernel = std::move(pendingKernel_))
             engine_.LoadConvolverKernel(kernel->samples.data(), kernel->frames, kernel->channels, 1);
+        if (pendingKernelUnload_)
+        {
+            engine_.UnloadConvolverKernel();
+            pendingKernelUnload_ = false;
+        }
         if (auto ddc = std::move(pendingDdc_))
             engine_.LoadDdcCoefficients(ddc->sections44100.data(), ddc->sections48000.data(),
                 static_cast<uint32_t>(ddc->sections44100.size()));
@@ -765,11 +770,31 @@ void ViPER4HostAudioProcessor::applyStateTree(const juce::ValueTree& newState)
         parameters_.replaceState(newState);
         parameters_.state.setProperty("uiLanguage", lang, nullptr);
     }
-    // convolverPath/ddcPath 只存路径，内核不随树走：切槽位/换预设后与
-    // 已载入的不一致就重载。文件 IO 放在锁外，别堵住音频线程。
+    // convolverPath/ddcPath 只存路径，内核不随树走：切槽位/换预设后由
+    // syncFileDataFromState 对齐（重载或卸载）。文件 IO 在锁外，别堵音频线程。
+    syncFileDataFromState();
+}
+
+void ViPER4HostAudioProcessor::syncFileDataFromState()
+{
+    // 状态换树后按树里的路径对齐文件数据：与已载入的不一致就重载；路径
+    // 为空而已载入过就走引擎的卸载接口（走 pending 交接，在音频线程上
+    // 执行，与载入同款）。
     if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString();
-        conv.isNotEmpty() && conv != loadedConvolverPath_)
-        loadConvolverFile(conv);
+        conv.isNotEmpty())
+    {
+        if (conv != loadedConvolverPath_)
+            loadConvolverFile(conv);
+    }
+    else if (loadedConvolverPath_.isNotEmpty())
+    {
+        {
+            std::lock_guard<std::mutex> lock(pendingMutex_);
+            pendingKernel_.reset();
+            pendingKernelUnload_ = true;
+        }
+        loadedConvolverPath_ = {};
+    }
     if (const auto ddc = parameters_.state.getProperty("ddcPath", {}).toString();
         ddc.isNotEmpty() && ddc != loadedDdcPath_)
         loadDdcFile(ddc);
@@ -838,11 +863,8 @@ void ViPER4HostAudioProcessor::setStateInformation(const void* data, int sizeInB
                 juce::ScopedLock lock(getCallbackLock());
                 parameters_.replaceState(juce::ValueTree::fromXml(*stateXml));
             }
-            // 重新加载恢复出的状态里记录的文件数据。
-            if (const auto conv = parameters_.state.getProperty("convolverPath", {}).toString(); conv.isNotEmpty())
-                loadConvolverFile(conv);
-            if (const auto ddc = parameters_.state.getProperty("ddcPath", {}).toString(); ddc.isNotEmpty())
-                loadDdcFile(ddc);
+            // 重新加载恢复出的状态里记录的文件数据（含空路径时的内核卸载）。
+            syncFileDataFromState();
             if (ab != nullptr)
             {
                 activeAbSlot = juce::jlimit(0, 1, ab->getIntAttribute("active"));
