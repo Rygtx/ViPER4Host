@@ -1163,8 +1163,10 @@ void ViPER4HostAudioProcessorEditor::resized()
                 pg->grMeter->setBounds(8, titleHeight + gap, columnWidth - 16, grMeterHeight);
         }
         const int fileRowHeight = pg->hasFileRow && !collapsed ? rowHeight : 0;
+        // 底部留一个 gap 收边，与标题栏到正文的间距对称；否则最后一个
+        // 控件贴着卡片下边缘。
         const int height = titleHeight
-            + (collapsed ? 0 : gap + graphicH + rowCount * rowHeight + fileRowHeight);
+            + (collapsed ? 0 : gap + graphicH + rowCount * rowHeight + fileRowHeight + gap);
 
         pg->group.setBounds(gap, y, columnWidth, height);
         for (auto& row : pg->rows)
